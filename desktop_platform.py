@@ -16,9 +16,14 @@ def prepare_application():
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('BackloGame.Backlog')
 
 
-def startup_help(platform=None):
+def startup_help(platform=None, error=None):
     platform = platform or sys.platform
     if platform == 'win32':
+        if error and 'Python.Runtime.Loader.Initialize' in str(error):
+            return ('Windows may have blocked DLLs extracted from the downloaded ZIP. '
+                    'Right-click the original ZIP, open Properties, select Unblock, '
+                    'then extract it again. Preserve your data folder. '
+                    'If it still fails, check Microsoft .NET Framework 4.8 and send desktop.log.')
         return ('BackloGame requires Microsoft Edge WebView2 Runtime. If it is missing, '
                 'download Evergreen Runtime from https://developer.microsoft.com/microsoft-edge/webview2/ .')
     return 'Install a pywebview backend for your OS (GTK/WebKit or Qt on Linux).'

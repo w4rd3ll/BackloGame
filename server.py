@@ -9,6 +9,7 @@ import re
 import secrets
 import socket
 import os
+import sys
 import sqlite3
 import threading
 import time
@@ -32,6 +33,10 @@ TOKEN = secrets.token_urlsafe(32)
 STATUSES = ['Хочу пройти', 'Играю', 'Пройдено', 'Отложено', 'Брошено']
 DEFAULT_PLATFORMS = ['Пока неизвестно','PC','Steam Deck','PlayStation 5','PlayStation 4','Xbox Series X/S','Xbox One','Nintendo Switch','Nintendo Switch 2','Android','iOS','Эмулятор']
 DEFAULT_SETTINGS = {'hidden_categories': [], 'show_card_notes': True, 'default_category': 'Хочу пройти', 'language': 'en'}
+DEFAULT_SETTINGS['category_sorts'] = {}
+DEFAULT_SETTINGS['theme'] = 'teal'
+DEFAULT_SETTINGS['auto_check_updates'] = True
+DEFAULT_SETTINGS['steam_relay_url'] = 'https://backlogame-steam.w4rdell.workers.dev'
 CACHE = {}
 CACHE_LOCK = threading.Lock()
 MUTATION_LOCK = threading.RLock()
@@ -457,6 +462,30 @@ def validate_settings(data, allowed_categories=None):
     if not isinstance(data, dict):
         raise ValueError('Некорректные настройки')
     result = {}
+    if 'auto_check_updates' in data:
+        if type(data['auto_check_updates']) is not bool:raise ValueError('Unsupported update preference')
+        result['auto_check_updates'] = data['auto_check_updates']
+    if 'theme' in data:
+        if data['theme'] not in ('teal','red','pink','green','yellow','blue','purple','mono'):
+            raise ValueError('Unsupported theme')
+        result['theme'] = data['theme']
+    if 'steam_relay_url' in data:
+        url = str(data['steam_relay_url']).strip().rstrip('/')
+        parts = urllib.parse.urlsplit(url)
+        if url and (len(url)>500 or parts.scheme!='https' or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment or parts.path not in ('','/')):
+            raise ValueError('Адрес Steam-сервиса должен начинаться с https://')
+        result['steam_relay_url'] = url
+    if 'category_sorts' in data:
+        sorts = data['category_sorts']
+        fields = {'manual_order','added_at','completed_at','title','release_date','platform','status','genre','series','tags','priority'}
+        if not isinstance(sorts, dict) or len(sorts) > 200:
+            raise ValueError('Некорректная сортировка')
+        for key, value in sorts.items():
+            if not isinstance(key, str) or len(key)>100 or not isinstance(value, dict) or value.get('field') not in fields or type(value.get('direction')) is not int or value['direction'] not in (-1,1):
+                raise ValueError('Некорректная сортировка')
+            if value.get('view','cards') not in ('cards','list','compact'):
+                raise ValueError('Некорректный вид библиотеки')
+        result['category_sorts'] = {key: {'field': value['field'], 'direction': value['direction'], 'view':value.get('view','cards')} for key,value in sorts.items()}
     if 'language' in data:
         if data['language'] not in ('en', 'ru'):
             raise ValueError('Unsupported interface language')
@@ -564,8 +593,10 @@ def manage_category(data):
 
 FIELDS = {'source_id', 'title', 'original_title', 'image', 'description', 'qid', 'series_qid', 'series', 'genre', 'release_date', 'release_label', 'developer', 'available_platforms', 'source_url', 'platform', 'status', 'notes', 'tags', 'priority', 'added_at', 'favorite'}
 FIELDS.update({'description_url', 'description_language'})
+FIELDS.update({'provider', 'sync_provider', 'sync_key', 'sync_status', 'sync_added_at', 'completed_at', 'steam_playtime'})
 FIELDS.add('thumbnail_crop')
 FIELDS.add('image_local')
+FIELDS.update({'hltb_game_id','hltb_url','hltb_updated_at','hltb_previous_status','started_at'})
 
 
 def validate(data, allowed_statuses=None):
@@ -608,6 +639,17 @@ def validate(data, allowed_statuses=None):
         datetime.fromisoformat(date + ('-01-01' if len(date) == 4 else '-01' if len(date) == 7 else ''))
     if result.get('added_at'):
         datetime.fromisoformat(result['added_at'].replace('Z', '+00:00'))
+    for field in ('completed_at','started_at'):
+        if result.get(field):
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', result[field]):
+                raise ValueError('Дата прохождения: ГГГГ-ММ-ДД')
+            datetime.fromisoformat(result[field])
+    if 'hltb_entries' in data:
+        entries = data['hltb_entries']
+        if not isinstance(entries, list) or len(entries)>200 or any(not isinstance(x,dict) for x in entries):
+            raise ValueError('Некорректные записи HLTB')
+        allowed = {'id','game_id','custom_title','game_name','platform','game_image','date_added','date_updated','date_start','date_complete','release_world','list_playing','list_backlog','list_replay','list_comp','list_retired','play_notes','play_storefront'}
+        result['hltb_entries'] = [{k:v for k,v in row.items() if k in allowed and type(v) in (str,int,float,bool,type(None))} for row in entries]
     return result
 
 
@@ -686,6 +728,8 @@ def save_game(data, gid=None, db=None):
     record = validate(data, allowed_statuses=[x[0] for x in db.execute('SELECT name FROM categories')] if db is not None else None)
     # Download before opening a write transaction; ordinary edits reuse the archive.
     previous_image = next((g for g in library() if g['id'] == gid), {}) if gid is not None else {}
+    if record.get('status') == 'Пройдено' and not record.get('completed_at') and previous_image.get('status') != 'Пройдено' and not data.get('sync_status'):
+        record['completed_at'] = previous_image.get('completed_at') or datetime.now().date().isoformat()
     image = record.get('image', previous_image.get('image', ''))
     old_local = previous_image.get('image_local', '')
     archived = old_local if image == previous_image.get('image') and old_local and (DATA / old_local.lstrip('/')).is_file() else ''
@@ -848,7 +892,7 @@ def bulk_update(data):
     ids=data.get('ids')
     patch=data.get('patch')
     if not isinstance(ids,list) or not ids or len(ids)>20000 or any(type(x)!=int for x in ids): raise ValueError('Выбери игры')
-    if not isinstance(patch,dict) or not patch or set(patch)-{'status','platform','favorite'}: raise ValueError('Некорректные изменения')
+    if not isinstance(patch,dict) or not patch or set(patch)-{'status','platform','favorite','completed_at'}: raise ValueError('Некорректные изменения')
     with connection() as db:
         for gid in set(ids):
             row=db.execute('SELECT payload FROM games WHERE id=?',(gid,)).fetchone()
@@ -879,8 +923,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if parts.path == '/api/library':
                 return self.reply({'games': library(), 'platforms': platform_names(), 'categories': category_names(), 'settings': settings(), 'token': TOKEN, 'app': 'backlogame', 'data_directory': str(DATA.resolve())})
+            if parts.path == '/api/library-sync/job':
+                if self.headers.get('X-Library-Token') != TOKEN:
+                    return self.reply({'error':'Обновите страницу приложения'},403)
+                return self.reply(self.server.library_sync.inspect(args.get('id',[''])[0]))
             if parts.path == '/api/backups':
                 return self.reply({'limit':BACKUP_LIMIT,'items':[{'name':p.name,'size':p.stat().st_size} for p in backup_files()]})
+            if parts.path == '/api/updates':
+                return self.reply(self.server.updates.status())
             if parts.path == '/api/backup-download':
                 path=backup_path(args.get('name',[''])[0])
                 raw=path.read_bytes()
@@ -909,13 +959,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(raw)
                 return
-            files = {'/rutracker-icon.png':'rutracker-icon.png','/i18n.js':'i18n.js','/desktop.js':'desktop.js','/app-icon.png':'app-icon.png','/app-icon.ico':'app-icon.ico','/favicon.ico':'app-icon.ico','/': 'index.html', '/app.js': 'app.js', '/enhancements.js': 'enhancements.js', '/thumbnail.js': 'thumbnail.js', '/style.css': 'style.css'}
+            files = {'/library-features.js':'library-features.js','/rutracker-icon.png':'rutracker-icon.png','/i18n.js':'i18n.js','/desktop.js':'desktop.js','/app-icon.png':'app-icon.png','/app-icon.ico':'app-icon.ico','/favicon.ico':'app-icon.ico','/': 'index.html', '/app.js': 'app.js', '/enhancements.js': 'enhancements.js', '/thumbnail.js': 'thumbnail.js', '/style.css': 'style.css'}
+            files['/themes.js'] = 'themes.js'
+            files['/updates.js'] = 'updates.js'
+            for theme in ('teal','red','pink','green','yellow','blue','purple','mono'):
+                files['/themes/icon-'+theme+'.svg'] = 'themes/icon-'+theme+'.svg'
             if parts.path not in files:
                 return self.reply({'error': 'Не найдено'}, 404)
             path = ROOT / 'static' / files[parts.path]
             raw = path.read_bytes()
             self.send_response(200)
-            mime = {'html': 'text/html', 'js': 'text/javascript', 'css': 'text/css', 'png':'image/png', 'ico':'image/vnd.microsoft.icon'}[path.suffix[1:]]
+            mime = {'html': 'text/html', 'js': 'text/javascript', 'css': 'text/css', 'png':'image/png', 'ico':'image/vnd.microsoft.icon','svg':'image/svg+xml'}[path.suffix[1:]]
             self.send_header('Content-Type', mime + ('; charset=utf-8' if path.suffix in ('.html','.js','.css') else ''))
             self.send_header('Content-Length', str(len(raw)))
             self.send_header('Cache-Control', 'no-cache')
@@ -947,6 +1001,20 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict):
                 raise ValueError('Ожидался объект JSON')
+            if self.path == '/api/updates/check':return self.reply(self.server.updates.start('check'))
+            if self.path == '/api/updates/download':return self.reply(self.server.updates.start('download'))
+            if self.path == '/api/updates/install':
+                if not getattr(self.server,'desktop_close',None):raise ValueError('Automatic installation is available in the Windows portable app')
+                if self.server.updates.status()['state']!='ready':raise ValueError('No verified update package is available')
+                create_backup()
+                self.server.updates.launch_install()
+                self.reply({'ok':True})
+                threading.Timer(.5,self.server.desktop_close).start()
+                return
+            if self.path == '/api/library-sync/preview':
+                return self.reply(self.server.library_sync.preview(data))
+            if self.path == '/api/library-sync/apply':
+                return self.reply(self.server.library_sync.apply(data))
             if self.path == '/api/desktop-close' and getattr(self.server,'desktop_close',None):
                 self.server.desktop_close()
                 return self.reply({'ok':True})
@@ -1024,6 +1092,13 @@ class Handler(BaseHTTPRequestHandler):
 
 class LocalServer(ThreadingHTTPServer):
     allow_reuse_address = False
+
+    def __init__(self, *args, **kwargs):
+        from library_sync import Manager
+        self.library_sync = Manager(sys.modules[__name__])
+        from updater import UpdateManager
+        self.updates = UpdateManager(DATA)
+        super().__init__(*args, **kwargs)
 
     def server_bind(self):
         # Windows otherwise permits multiple servers to bind the same address.

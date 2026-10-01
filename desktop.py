@@ -86,5 +86,5 @@ if __name__=='__main__':
     try:run()
     except Exception as exc:
         logging.exception('Desktop startup failed')
-        if '--smoke-test' not in sys.argv:desktop_platform.show_error('Could not start BackloGame.\n'+str(exc)+'\n\n'+desktop_platform.startup_help()+'\nDetails: desktop.log in the data folder.')
+        if '--smoke-test' not in sys.argv:desktop_platform.show_error('Could not start BackloGame.\n'+str(exc)+'\n\n'+desktop_platform.startup_help(error=exc)+'\nDetails: desktop.log in the data folder.')
         sys.exit(1)

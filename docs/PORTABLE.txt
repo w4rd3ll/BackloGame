@@ -21,3 +21,6 @@ Only the latest 10 automatic/manual ZIP backups are kept by the application.
 При обновлении сохраняйте свою папку data.
 Язык: Settings → General → Interface language → Русский.
 Требуется системный Microsoft WebView2 Runtime; отдельная копия не включена.
+
+Downloaded ZIP on another Windows PC: before extracting, right-click the ZIP > Properties > Unblock > OK. If Python.Runtime.Loader.Initialize fails, extract the unblocked ZIP again. Preserve your data folder.
+Updates: Settings > Updates. Startup checks can be disabled. Installation is manual, verifies the GitHub SHA256 digest and preserves data. One previous program bundle is kept in .update-rollback.

@@ -66,3 +66,7 @@ assert.equal(run('JSON.stringify(games)'), original);
 run('uiLanguage="en"');assert.match(run('gameContent(games[2])'), /Unknown/);
 assert.doesNotMatch(run('gameContent(games[2])'), /Released: Не указана/);
 console.log('English/Russian labels, stable storage values and custom names: OK');
+run(`games=[{id:1,title:'A',completed_at:'2001-01-01'},{id:2,title:'B',completed_at:'2025-12-25'},{id:3,title:'C'}];direction=1;`);
+get('sortField').value='completed_at';assert.deepEqual(ids(),[1,2,3]);
+run('direction=-1');assert.deepEqual(ids(),[2,1,3]);
+console.log('Completion-date sorting keeps unknown dates last in both directions: OK');

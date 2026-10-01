@@ -1,0 +1,27 @@
+[Unit]
+Description=BackloGame public Steam library relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+DynamicUser=yes
+WorkingDirectory=/opt/backlogame
+ExecStart=/usr/bin/python3 /opt/backlogame/relay.py
+LoadCredential=steam_api_key:/etc/backlogame/steam-api-key
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=160M
+CPUQuota=30%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

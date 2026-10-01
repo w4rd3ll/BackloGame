@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew BackloGame IP HTTPS certificate
+
+[Service]
+Type=oneshot
+ExecStart=/opt/backlogame-certbot/bin/certbot renew --quiet --deploy-hook /usr/local/sbin/backlogame-reload-nginx

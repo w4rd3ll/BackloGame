@@ -14,8 +14,9 @@ Demonstration library; progress is illustrative. Downloads start empty.
 
 ## Get started
 
-1. Download `BackloGame-0.1.0-windows-x64-portable.zip` from Releases.
-2. Extract the entire archive to a writable local folder.
+1. Download `BackloGame-0.2.0-windows-x64-portable.zip` from Releases.
+2. If Windows blocks startup, open the ZIP properties, select **Unblock**, then extract again.
+   Extract the entire archive to a writable local folder.
 3. Run `BackloGame.exe`. Keep `_internal` beside it.
 
 No BackloGame installer, Python installation, account, or API key is needed.
@@ -27,6 +28,10 @@ Russian in **Settings → General → Interface language**.
 ## Features
 
 - Search Steam, Wikipedia, or Metacritic, or add games manually.
+- Import public Steam libraries and HLTB profiles or CSV exports, with duplicate previews.
+- Save completion dates and separate sorting/view choices for each category.
+- Choose from eight color themes.
+- Check and install portable updates from Settings, keeping one previous app version.
 - Track progress and favorites; create your own categories and platforms.
 - Use cards, a list, or a compact one-line list with small covers.
 - Filter by platform, genre, series, tags, and dates; sort or drag into manual order.
@@ -52,7 +57,9 @@ it does not launch games or synchronize accounts.
 On first launch, BackloGame creates `data` beside the executable. The library,
 covers, settings, backups, and window profile stay there.
 
-To move your collection, close the app and copy its entire folder. To update,
+To move your collection, close the app and copy its entire folder. Use **Settings → Updates**
+for verified downloads and installation. Version 0.1.0 needs one manual update first.
+To update manually,
 close the app, replace `BackloGame.exe` and `_internal`, and **keep `data`**.
 Use a folder with write access; do not launch from inside a ZIP.
 
@@ -73,7 +80,9 @@ Neither script reads the sibling `BackloGame-Personal` folder.
 Tests (run from this source folder):
 
 ```text
-.venv/Scripts/python.exe -m unittest test_library.py tests/test_storage.py tests/test_desktop_platform.py tests/test_desktop_close.py
+.venv/Scripts/python.exe -m unittest discover -s tests
+.venv/Scripts/python.exe -m unittest test_library
+node --test tests/test_cloudflare_worker.mjs
 node test_filters.cjs
 node --expose-internals tests/check-localization.cjs
 ```

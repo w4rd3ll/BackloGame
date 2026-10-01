@@ -7,7 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE = ROOT.parent / 'BackloGame-Release'
-VERSION = '0.1.0'
+sys.path.insert(0,str(ROOT))
+from version import VERSION
 
 
 def main():

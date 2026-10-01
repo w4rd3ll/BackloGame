@@ -341,7 +341,43 @@ const translations={
   "Не удалось выполнить запрос. Проверьте соединение и повторите.": "The request failed. Check your connection and try again."
 };
 function t(key){return uiLanguage==='ru'?key:(translations[key]??key);}
+Object.assign(translations,{
+  'Предыдущее обновление не установилось. Старая версия восстановлена; можно повторить попытку.':'The previous update failed. The old version was restored; you can try again.',
+  'Показать новые':'Show new','Показать все':'Show all','Новых:':'New:',
+  'Новых игр нет':'No new games',
+  'Исходный список Steam сохранён. Новые игры появятся после следующей проверки.':'Steam baseline saved. New games will appear after the next check.',
+  'Не удалось прочитать сохранённый список Steam. Файл не изменён.':'Could not read the saved Steam list. The file was not changed.',
+  'Источники':'Sources','Личный API key (необязательно)':'Personal API key (optional)',
+  'Публичная библиотека Steam загружается через Cloudflare. Общий ключ хранится в Cloudflare Secrets и не включён в приложение. При импорте можно использовать личный API key.':'Public Steam libraries are loaded through Cloudflare. The shared key is stored in Cloudflare Secrets and is not included in the app. You can use a personal API key when importing.',
+  'Источник вернул повреждённый ответ':'The source returned a corrupted response',
+  'Можно оставить ключ пустым: список загрузится через настроенный Steam-сервис.':'You can leave the key empty: the configured Steam service will load the library.',
+  'Адрес Steam-сервиса должен начинаться с https://':'The Steam service URL must begin with https://',
+  'Steam-сервис недоступен. Попробуй позже или используй личный API key.':'The Steam service is unavailable. Try later or use your personal API key.',
+  'Steam-сервис вернул некорректный список':'The Steam service returned an invalid library',
+  'Бэклог':'Backlog','Повторное прохождение':'Replay','По дате прохождения':'Completion date','Дата прохождения':'Completion date',
+  'Импорт библиотеки':'Import library','Загрузить список':'Load library','Ключ используется один раз и не сохраняется.':'The key is used once and is not saved.',
+  'HLTB — публичный список по ссылке или CSV. Статусы распределяются автоматически.':'HLTB: public profile link or CSV. Games are assigned to their corresponding statuses.',
+  'Выбери CSV-файл':'Choose a CSV file','Файл больше 10 МБ':'The file exceeds 10 MB','Применить ко всем совпадениям':'Apply to all matches','Пропустить все совпадения':'Skip all matches',
+  'Добавить выбранные':'Import selected','Добавлено:':'Added:','Обновлено:':'Updated:','Пропущено:':'Skipped:','Загрузка…':'Loading…','Обложка':'Cover','Теги':'Tags',
+  'Неоднозначное совпадение. Сопоставь игры вручную.':'Ambiguous match. Match the games manually.',
+  'Совпадение — выбрать данные':'Match — choose fields','Сейчас:':'Currently:', 'Заменить заполненные поля':'Replace existing values',
+  'Без замены заполняются только пустые поля; теги объединяются. Избранное и ручной порядок сохраняются.':'Without replacement, only empty fields are filled; tags are merged. Favorites and manual order are preserved.',
+  'Некорректная сортировка':'Invalid sort settings','Некорректный вид библиотеки':'Invalid library view','Дата прохождения: ГГГГ-ММ-ДД':'Completion date: YYYY-MM-DD',
+  'Не удалось загрузить профиль. Проверь доступность списка и подключение; для HLTB можно использовать CSV.':'Could not load the profile. Check library visibility and your connection; HLTB also supports CSV.',
+  'HLTB изменил страницу профиля или список закрыт. Используй CSV-экспорт.':'The HLTB profile format changed or the list is private. Use CSV export.',
+  'HLTB изменил формат списка. Используй CSV-экспорт.':'The HLTB list format changed. Use CSV export.',
+  'Список устарел. Загрузи его снова.':'The preview expired. Load it again.', 'Не удалось завершить импорт. Повтори попытку.':'Could not finish the import. Try again.',
+  'Вставь ссылку на профиль Steam или HLTB':'Enter a Steam or HLTB profile link','Это не CSV-экспорт списка игр HLTB':'This is not an HLTB library CSV export',
+  'Для Steam нужен личный Web API key. Ключ используется только для этого запроса и не сохраняется.':'Steam requires your Web API key. It is used for this request and is not saved.',
+  'Steam не вернул библиотеку. Проверь API key и публичность игровой информации.':'Steam did not return a library. Check your API key and game-details privacy settings.'
+});
 const builtInValues=new Set(['Хочу пройти','Играю','Пройдено','Отложено','Брошено','Пока неизвестно','Эмулятор','Высокий','Обычный','Низкий']);
+Object.assign(translations,{
+  'Обновления':'Updates','Обновления программы':'Application updates','Проверяем обновления…':'Checking for updates…','Скачивание…':'Downloading…','Обновление скачано и проверено.':'Update downloaded and verified.','Доступна новая версия: ':'New version available: ','Установлена актуальная версия.':'You are up to date.','Обновления ещё не проверялись.':'Updates have not been checked yet.','Текущая версия: ':'Current version: ','Проверять обновления при запуске':'Check for updates at startup','Новые версии загружаются с GitHub. Установка запускается вручную; база, обложки и настройки сохраняются. Хранится одна предыдущая версия программы.':'New versions are downloaded from GitHub. Installation starts manually and preserves your library, covers and settings. One previous application version is kept.','Проверить обновления':'Check for updates','Скачать обновление':'Download update','Установить и перезапустить':'Install and restart','Релизы на GitHub':'GitHub releases','Автоустановка доступна в портативном Windows-приложении. В браузере скачанный архив проверен, но код программы не заменяется.':'Automatic installation is available in the portable Windows app. Browser mode verifies the downloaded archive but does not replace the application code.',
+  'Цветовая тема':'Color theme','Бирюзовая':'Teal','Красная':'Red','Розовая':'Pink','Зелёная':'Green','Жёлтая':'Yellow','Голубая':'Sky blue','Фиолетовая':'Purple','Монохромная':'Monochrome',
+  'Тема меняет интерфейс, логотип и иконку. Цвета обложек и обозначения статусов сохраняются.':'The theme changes the interface, wordmark and icon. Cover colors and status indicators stay unchanged.'
+});
+builtInValues.add('Бэклог');
 function displayValue(value){return builtInValues.has(value)?t(value):value;}
 function applyLanguage(language){
   uiLanguage=language==='ru'?'ru':'en';document.documentElement.lang=uiLanguage;

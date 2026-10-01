@@ -1,0 +1,23 @@
+BackloGame — portable Windows x64
+
+Run BackloGame.exe. No installer or Python installation is needed.
+Keep the entire folder together, including _internal and data.
+Uses Microsoft WebView2 Evergreen Runtime installed on the computer.
+If missing, install the component once from Microsoft:
+https://developer.microsoft.com/microsoft-edge/webview2/
+BackloGame itself has no installer; its data remains in the application folder.
+Use a writable local folder. Do not run from inside a ZIP or a network share.
+
+Your library, saved covers, settings, backups and window profile live in data.
+To move the library, close BackloGame and copy the entire application folder.
+To update, replace BackloGame.exe and _internal, keeping your data folder.
+English is the default. Settings → General → Interface language → Русский.
+Only the latest 10 automatic/manual ZIP backups are kept by the application.
+
+Запуск: BackloGame.exe. Установка программы и Python не нужны.
+Не отделяйте EXE от папок _internal и data.
+Выберите обычную локальную папку, в которую можно записывать файлы.
+Для переноса закройте приложение и скопируйте всю папку.
+При обновлении сохраняйте свою папку data.
+Язык: Settings → General → Interface language → Русский.
+Требуется системный Microsoft WebView2 Runtime; отдельная копия не включена.

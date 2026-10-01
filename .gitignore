@@ -1,0 +1,10 @@
+data/
+backups/
+__pycache__/
+*.pyc
+*.dpapi
+.venv/
+build/
+dist/
+tests/output/
+*.log

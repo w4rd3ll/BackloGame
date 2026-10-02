@@ -94,3 +94,47 @@ class UpdaterTests(unittest.TestCase):
             self.assertEqual((app/'BackloGame.exe').read_bytes(),b'old')
             self.assertEqual((app/'_internal/runtime.txt').read_text(),'old')
             self.assertEqual(json.loads((data/'update-result.json').read_text(encoding='utf-8-sig'))['status'],'failed')
+
+    @unittest.skipUnless(sys.platform=='win32','Windows update helper')
+    def test_locked_file_never_partially_moves_runtime_even_on_retry(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base=Path(folder);app=base/'app';stage=base/'stage';data=app/'data'
+            for root in [app,stage]:
+                (root/'_internal/nested').mkdir(parents=True)
+                (root/'BackloGame.exe').write_bytes(b'old' if root==app else b'new')
+                for i in range(50):
+                    (root/f'_internal/nested/{i:03}.dll').write_bytes((b'old' if root==app else b'new')+str(i).encode())
+            data.mkdir();(data/'library.sqlite3').write_bytes(b'library')
+            before={str(p.relative_to(app)):p.read_bytes() for p in app.rglob('*') if p.is_file()}
+            config=base/'install.json'
+            config.write_text(json.dumps({'root':str(app),'stage':str(stage),'pid':2147483647,'data':str(data)}))
+            with (app/'_internal/nested/049.dll').open('rb'):
+                for _ in range(2):
+                    subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(Path(updater.__file__).with_name('update-portable.ps1')),'-Config',str(config),'-NoRestart','-WaitSeconds','0'],check=True,capture_output=True)
+                    for relative,content in before.items():
+                        self.assertEqual((app/relative).read_bytes(),content,relative)
+                    self.assertEqual(json.loads((data/'update-result.json').read_text(encoding='utf-8-sig'))['status'],'failed')
+
+    @unittest.skipUnless(sys.platform=='win32','Windows update helper')
+    def test_other_instance_blocks_update_before_any_file_changes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base=Path(folder);app=base/'app';stage=base/'stage';data=app/'data'
+            for root in [app,stage]:(root/'_internal').mkdir(parents=True)
+            data.mkdir();(app/'_internal/runtime.dll').write_bytes(b'original')
+            (stage/'BackloGame.exe').write_bytes(b'new');(stage/'_internal/runtime.dll').write_bytes(b'new')
+            (app/'.update-rollback').mkdir();(app/'.update-rollback/keep.txt').write_bytes(b'previous rollback')
+            build=base/'build.ps1'
+            build.write_text("Add-Type -TypeDefinition 'public class UpdateFixture {public static void Main(){System.Threading.Thread.Sleep(60000);}}' -OutputAssembly '"+str(app/'BackloGame.exe').replace("'","''")+"' -OutputType ConsoleApplication")
+            subprocess.run(['powershell.exe','-NoProfile','-File',str(build)],check=True,capture_output=True)
+            exe=(app/'BackloGame.exe').read_bytes()
+            process=subprocess.Popen([str(app/'BackloGame.exe')],creationflags=subprocess.CREATE_NO_WINDOW)
+            try:
+                config=base/'install.json';config.write_text(json.dumps({'root':str(app),'stage':str(stage),'pid':2147483647,'data':str(data)}))
+                subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(Path(updater.__file__).with_name('update-portable.ps1')),'-Config',str(config),'-WaitSeconds','0'],check=True,capture_output=True)
+                self.assertEqual((app/'BackloGame.exe').read_bytes(),exe)
+                self.assertEqual((app/'_internal/runtime.dll').read_bytes(),b'original')
+                self.assertEqual((app/'.update-rollback/keep.txt').read_bytes(),b'previous rollback')
+                result=json.loads((data/'update-result.json').read_text(encoding='utf-8-sig'))
+                self.assertEqual(result['status'],'failed');self.assertIn('Close all',result['error'])
+                self.assertIsNone(process.poll())
+            finally:process.terminate();process.wait(timeout=10)

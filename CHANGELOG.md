@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 — 2026-10-02
+
+- Wait for every running instance from the installation folder before replacing program files.
+- Move runtime directories atomically so a locked DLL cannot leave a partially moved installation.
+- Preserve rollback errors and avoid starting another instance when an existing one blocks an update.
+- Add regression checks for repeated failures with locked DLLs and a second running instance.
+
 ## 0.3.0 — 2026-10-02
 
 - Full-card editing preserves unchanged original HLTB records, including their

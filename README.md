@@ -14,7 +14,7 @@ Demonstration library; progress is illustrative. Downloads start empty.
 
 ## Get started
 
-1. Download `BackloGame-0.3.0-windows-x64-portable.zip` from Releases.
+1. Download `BackloGame-0.3.1-windows-x64-portable.zip` from Releases.
 2. If Windows blocks startup, open the ZIP properties, select **Unblock**, then extract again.
    Extract the entire archive to a writable local folder.
 3. Run `BackloGame.exe`. Keep `_internal` beside it.

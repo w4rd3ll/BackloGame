@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 — 2026-10-02
+
+- Show the app window after portable updates, including updates launched by older helpers using a hidden startup window.
+- Keep explicit --hidden smoke-test launches hidden.
+
 ## 0.4.0 — 2026-10-02
 
 - Share the current filtered category as a standalone offline HTML file with embedded local covers and optional personal notes. Covers are resized to at most 224 × 300 pixels and compressed as WebP without changing library originals.

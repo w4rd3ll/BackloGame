@@ -65,6 +65,10 @@ def run():
         watchdog=threading.Timer(45,close_app)
         watchdog.start()
     def loaded():
+        # Older update helpers start the app with SW_HIDE. Explicitly show the
+        # main window once ready; preserve --hidden for isolated smoke tests.
+        if not args.hidden:
+            window.show()
         window.run_js('document.documentElement.dataset.desktop="true";')
         closing.ready.set()
         if args.smoke_test:

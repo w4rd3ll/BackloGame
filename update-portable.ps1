@@ -54,4 +54,4 @@ try {
   } catch {$failure+=' Rollback incomplete; preserved files are in .update-rollback. '+$_.Exception.Message;$parentExited=$false}
   @{status='failed';error=$failure} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $job.data 'update-result.json') -Encoding UTF8
 }
-if ($parentExited -and -not $NoRestart -and @(Get-AppProcesses).Count -eq 0) {Start-Process -FilePath (Join-Path $appRoot 'BackloGame.exe') -ArgumentList @('--data-dir',('"'+$job.data+'"')) -WorkingDirectory $appRoot -WindowStyle Hidden}
+if ($parentExited -and -not $NoRestart -and @(Get-AppProcesses).Count -eq 0) {Start-Process -FilePath (Join-Path $appRoot 'BackloGame.exe') -ArgumentList @('--data-dir',('"'+$job.data+'"')) -WorkingDirectory $appRoot}

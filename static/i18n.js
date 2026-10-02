@@ -497,9 +497,19 @@ builtInValues.add('Перепрохожу');
 translations['Новое прохождение']='New completion';
 
 translations['Не указано']='Not specified';
+translations['Без серии']='No series';
+builtInValues.add('Без серии');
+translations['Разработчик']='Developer';
 
 translations['Прохождений с датой']='Dated playthroughs';
 
 Object.assign(translations,{'Вид диаграмм':'Chart style','Столбики':'Bars','Круговые':'Pie charts','Жанры, платформы и годы выпуска':'Genres, platforms and release years','Другие':'Other','Всего':'Total'});
 
 Object.assign(translations,{'Доля среди указанных значений. Нажми, чтобы открыть игры.':'Share of known values. Click to view games.','Упоминаний':'Genre entries'});
+Object.assign(translations,{'Найти во всех каталогах':'Search all catalogs','Выбери игру в каждом каталоге, затем отметь, какие сведения взять. Остальные поля сохранятся.':'Choose a game in each catalog, then select the fields to use. Other fields stay unchanged.','Поле':'Field','Сейчас в библиотеке':'Currently in library','Оставить текущее':'Keep current','Выбрать игру':'Choose a game','Применить выбранное':'Apply selected fields','Выбрано полей:':'Fields selected:','Доступные платформы':'Available platforms','Selected catalog field is empty':'The selected catalog field is no longer available. Choose another source.','Invalid catalog field selection':'Invalid catalog field selection','Invalid catalog source':'Invalid catalog source'});
+
+Object.assign(translations,{'Что показывать на карточках':'Show on cards','Заметки и серии':'Notes and series','Заметки':'Notes','Серии':'Series'});
+
+Object.assign(translations,{'Поделиться':'Share','Поделиться списком':'Share game list','Название списка':'List title','Игр в файле:':'Games in file:','Учитываются текущие фильтры и порядок игр.':'Uses the current filters and game order.','Включить обложки':'Include covers','Включить мои заметки':'Include my notes','Один HTML-файл — открывается без интернета и установки программы.':'One HTML file — opens offline without installing the app.','Сохранить HTML':'Save HTML','Готовим файл…':'Preparing file…','Файл готов. Передай его другу.':'File is ready. Send it to your friend.','Без сохранённой обложки:':'Without a saved cover:','Нет игр для отправки':'No games to share','Invalid shared game selection':'Invalid shared game selection','Invalid shared list title':'Enter a list title (up to 200 characters).','Invalid sharing options':'Invalid sharing options','A selected game was deleted. Reopen the sharing dialog.':'A selected game was deleted. Reopen the sharing dialog.'});
+
+Object.assign(translations,{'Обложки уменьшаются для отправки; оригиналы сохраняются.':'Covers are resized for sharing; originals stay unchanged.','Размер файла:':'File size:'});

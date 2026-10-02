@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 — 2026-10-02
+
+- Share the current filtered category as a standalone offline HTML file with embedded local covers and optional personal notes. Covers are resized to at most 224 × 300 pixels and compressed as WebP without changing library originals.
+
+- Compare Steam, Metacritic and Wikipedia side by side when refreshing metadata.
+- Select individual fields from different catalogs or retain their existing values; save the combined selection atomically.
+- Independent catalog loading and errors, with automatic selection only for a unique exact title match.
+
+- Explicit No series filter, placed last; missing series defaults to No series on game saves and imports.
+- Choose notes, series or both in card details; vertically center list titles when details are hidden.
+- Remove redundant help text, move catalog actions above descriptions and align the wordmark.
+
 ## 0.3.1 — 2026-10-02
 
 - Wait for every running instance from the installation folder before replacing program files.

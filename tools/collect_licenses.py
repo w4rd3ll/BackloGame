@@ -10,7 +10,7 @@ out.mkdir(parents=True, exist_ok=True)
 python_license = Path(sys.base_prefix) / 'LICENSE.txt'
 if python_license.is_file():
     shutil.copy2(python_license, out / 'Python-LICENSE.txt')
-for package in ('pywebview','pythonnet','clr_loader','bottle','proxy_tools','typing_extensions','cffi','pycparser'):
+for package in ('pywebview','pythonnet','clr_loader','bottle','proxy_tools','typing_extensions','cffi','pycparser','Pillow'):
     dist = importlib.metadata.distribution(package)
     for path in dist.files or []:
         if any(word in Path(str(path)).name.lower() for word in ('license','copying','notice')):

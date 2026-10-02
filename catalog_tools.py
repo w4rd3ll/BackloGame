@@ -53,6 +53,7 @@ def existing(store,gid):
 
 
 def apply(store,data):
+    if 'fields' in data:return apply_fields(store,data)
     old=existing(store,data.get('id'))
     mode=data.get('mode','metadata')
     if mode not in ('metadata','cover','series'):raise ValueError('Invalid update mode')
@@ -78,7 +79,7 @@ def apply(store,data):
             if fresh.get(field):patch[field]=fresh[field]
         patch['description_url']=fresh.get('description_url') or fresh.get('source_url','')
     # Handwritten and multiple-series values always win.
-    if not (old.get('series') or '').strip() and fresh.get('series'):
+    if store.has_no_series(old.get('series')) and fresh.get('series'):
         patch.update({field:fresh[field] for field in ('series','series_qid','qid') if fresh.get(field)})
     with store.MUTATION_LOCK:
         current=existing(store,old['id'])
@@ -88,10 +89,48 @@ def apply(store,data):
     return {'game':saved,'changed':True}
 
 
+def apply_fields(store,data):
+    """One atomic save of explicitly selected fields from several catalogs."""
+    old=existing(store,data.get('id'))
+    fields=data.get('fields')
+    allowed={'title','description','genre','developer','available_platforms','release_date','series','image'}
+    if data.get('mode','metadata')!='metadata' or not isinstance(fields,dict) or not fields or set(fields)-allowed:
+        raise ValueError('Invalid catalog field selection')
+    if any(not isinstance(source,str) or not re.fullmatch(r'(?:steam|metacritic|wiki):[^\s]{1,500}',source) for source in fields.values()):
+        raise ValueError('Invalid catalog source')
+    fresh={source:enriched_details(store,source) for source in dict.fromkeys(fields.values())}
+    patch={'title':old['title']}
+    for field,source in fields.items():
+        item=fresh[source]
+        value=item.get(field)
+        if not value and not (field=='release_date' and item.get('release_label')):
+            raise ValueError('Selected catalog field is empty')
+        if field=='image':
+            patch.update(image=value,image_local=store.archive_cover(value))
+            if old.get('custom_covers',{}).get('portrait'):
+                patch['custom_covers']=dict(old['custom_covers'],portrait={'url':value,'local':patch['image_local'],'author':'','asset':None})
+        elif field=='description':
+            patch.update(description=value,description_language=item.get('description_language',''),description_url=item.get('description_url') or item.get('source_url',''))
+        elif field=='release_date':
+            patch.update(release_date=value or '',release_label=item.get('release_label',''))
+        elif field=='series':
+            patch.update(series=value,series_qid=item.get('series_qid',''))
+            if item.get('qid'):patch['qid']=item['qid']
+        elif field=='title':
+            patch.update(title=value,original_title=item.get('original_title') or value)
+        else:patch[field]=value
+    patch['source_aliases']=list(dict.fromkeys(value for value in [*old.get('source_aliases',[]),old.get('source_id'),*fresh] if value))
+    with store.MUTATION_LOCK:
+        if existing(store,old['id'])!=old:raise ValueError('The game changed. Try again.')
+        store.create_backup(automatic=True)
+        saved=store.save_game(patch,old['id'])
+    return {'game':saved,'changed':True}
+
+
 def automatic(store,data):
     old=existing(store,data.get('id'))
     if data.get('mode')=='series':
-        if (old.get('series') or '').strip():return {'game':old,'changed':False}
+        if not store.has_no_series(old.get('series')):return {'game':old,'changed':False}
         return apply(store,dict(data,mode='series'))
     provider=data.get('provider','metacritic')
     if provider=='auto':

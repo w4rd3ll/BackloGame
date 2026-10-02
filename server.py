@@ -1,4 +1,4 @@
-"""Local personal game library. Python standard library only."""
+"""Local personal game library."""
 from __future__ import annotations
 import argparse
 import html
@@ -35,6 +35,7 @@ DEFAULT_PLATFORMS = ['Пока неизвестно','PC','Steam Deck','PlayStat
 DEFAULT_SETTINGS = {'hidden_categories': [], 'show_card_notes': True, 'default_category': 'Хочу пройти', 'language': 'en'}
 DEFAULT_SETTINGS['category_sorts'] = {}
 DEFAULT_SETTINGS['theme'] = 'teal'
+DEFAULT_SETTINGS['card_details'] = 'both'
 DEFAULT_SETTINGS['auto_check_updates'] = True
 DEFAULT_SETTINGS['steam_relay_url'] = 'https://backlogame-steam.w4rdell.workers.dev'
 CACHE = {}
@@ -548,6 +549,10 @@ def validate_settings(data, allowed_categories=None):
         if not isinstance(values, list) or any(x not in (allowed_categories or category_names()) + ['favorites','not-favorites'] for x in values):
             raise ValueError('Неизвестная категория')
         result['hidden_categories'] = list(dict.fromkeys(values))
+    if 'card_details' in data:
+        if data['card_details'] not in ('both', 'notes', 'series'):
+            raise ValueError('Invalid card details mode')
+        result['card_details'] = data['card_details']
     if 'show_card_notes' in data:
         if not isinstance(data['show_card_notes'], bool):
             raise ValueError('Некорректный параметр заметок')
@@ -798,6 +803,10 @@ def update_cover(gid):
     return next(g for g in library() if g['id'] == gid)
 
 
+def has_no_series(value):
+    return not any(part.strip() not in ('', '-', 'Без серии') for part in str(value or '').split(';'))
+
+
 def save_game(data, gid=None, db=None):
     record = validate(data, allowed_statuses=[x[0] for x in db.execute('SELECT name FROM categories')] if db is not None else None)
     # Download before opening a write transaction; ordinary edits reuse the archive.
@@ -850,12 +859,16 @@ def save_game(data, gid=None, db=None):
             if 'hltb_entries' in data and data['hltb_entries'] == previous.get('hltb_entries'):
                 record['hltb_entries'] = previous['hltb_entries']
             record = dict(previous, **record)
+            if has_no_series(record.get('series')):
+                record['series'] = 'Без серии'
             artwork_urls={record.get('image'),*(cover.get('url') for cover in record.get('custom_covers',{}).values())}
             if record.get('thumbnail_crop') and record['thumbnail_crop']['image'] not in artwork_urls:
                 record['thumbnail_crop'] = None
             record['added_at'] = previous['added_at']
             db.execute('UPDATE games SET source_id=?,payload=? WHERE id=?', (record.get('source_id') or None, json.dumps(record, ensure_ascii=False), gid))
         else:
+            if has_no_series(record.get('series')):
+                record['series'] = 'Без серии'
             if not record.get('added_at'):
                 record['added_at'] = datetime.now(timezone.utc).isoformat()
             record.setdefault('platform', 'Пока неизвестно')
@@ -1099,6 +1112,7 @@ class Handler(BaseHTTPRequestHandler):
             files['/merge-games.js'] = 'merge-games.js'
             files['/catalog-tools.js'] = 'catalog-tools.js'
             files['/steamgriddb.js'] = 'steamgriddb.js'
+            files['/sharing.js'] = 'sharing.js'
             for theme in ('teal','red','pink','green','yellow','blue','purple','mono'):
                 files['/themes/icon-'+theme+'.svg'] = 'themes/icon-'+theme+'.svg'
             if parts.path not in files:
@@ -1138,6 +1152,9 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict):
                 raise ValueError('Ожидался объект JSON')
+            if self.path == '/api/share':
+                import library_share
+                return self.reply(library_share.export(sys.modules[__name__], data))
             if self.path == '/api/updates/check':return self.reply(self.server.updates.start('check'))
             if self.path == '/api/updates/download':return self.reply(self.server.updates.start('download'))
             if self.path == '/api/updates/install':

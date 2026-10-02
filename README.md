@@ -28,6 +28,7 @@ Russian in **Settings → General → Interface language**.
 ## Features
 
 - Search Steam, Wikipedia, or Metacritic, or add games manually.
+- Compare all three catalogs side by side and choose a source for each field when refreshing details.
 - Import public Steam libraries and HLTB profiles or CSV exports, with duplicate previews.
 - Track replays and multiple completion dates, with a platform for each playthrough.
 - Explore interactive statistics with bars and colorful pie charts.
@@ -42,6 +43,7 @@ Russian in **Settings → General → Interface language**.
 - Select a manual thumbnail crop and fill missing series from Wikidata.
 - Merge duplicate cards with a preview, retained history, and undo.
 - Edit multiple games together and collapse the side panels.
+- Share the current category and filters as an offline HTML file with embedded, compressed cover thumbnails. Original artwork stays unchanged. Personal notes are included only when explicitly enabled.
 - Export and restore full backups. At most **10** ZIP backups are retained.
 
 Catalog search requires Internet. Saved entries, notes, descriptions, and

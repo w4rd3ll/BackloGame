@@ -13,6 +13,19 @@ import server
 
 
 class LibraryTests(unittest.TestCase):
+    def test_share_endpoint_exports_only_selected_cards(self):
+        game=self.request('/api/save', {'game':{'title':'Shared game','notes':'personal note'}})[1]
+        other=self.request('/api/save', {'game':{'title':'Not shared'}})[1]
+        status,result=self.request('/api/share', {'ids':[game['id']], 'title':'For a friend','language':'en','covers':False})
+        self.assertEqual(status,200)
+        self.assertIn('Shared game',result['html'])
+        self.assertNotIn('personal note',result['html'])
+        self.assertNotIn('Not shared',result['html'])
+        self.assertEqual(result['count'],1)
+        self.assertEqual(self.request('/api/share', {'ids':[], 'title':'Empty'})[0],400)
+        with urllib.request.urlopen(self.url+'/sharing.js') as response:
+            self.assertEqual(response.status,200)
+
     def test_language_preferences_preserve_library(self):
         self.assertEqual(self.request('/api/library')[1]['settings']['language'], 'en')
         self.request('/api/save', {'game':{'title':'Название без перевода','notes':'Моя заметка','platform':'Моя консоль'}})

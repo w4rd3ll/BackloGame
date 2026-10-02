@@ -139,3 +139,29 @@ header{gap:14px}.panelToggle{font-size:19px;line-height:1;padding:10px;flex-shri
 @media(max-width:650px){.cards:not(.list){grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cards:not(.list) .gameBody{padding:10px 9px 12px;gap:5px}.cards:not(.list) h3{font-size:13px}}
 .list:not(.compact) .gameBody{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);min-width:0}
 .list:not(.compact) .gameName{overflow-wrap:anywhere}
+.catalogComparisonDialog{width:min(1320px,calc(100vw - 32px))}
+.catalogComparisonScroll{overflow-x:auto}
+.catalogComparisonTable{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;min-width:850px;font-size:12px}
+.catalogComparisonTable th,.catalogComparisonTable td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:12px;vertical-align:top;text-align:left;overflow-wrap:anywhere}
+.catalogComparisonTable th:first-child{width:120px;border-left:1px solid var(--line)}
+.catalogComparisonTable thead th{background:var(--card);border-top:1px solid var(--line)}
+.catalogComparisonTable thead th strong{display:block;margin-bottom:10px;color:var(--accent)}
+.catalogComparisonTable select{width:100%;font-size:12px}
+.catalogFieldChoice{display:grid;grid-template-columns:16px minmax(0,1fr);gap:8px;margin:0;font-size:12px;cursor:pointer;color:var(--text-soft)}
+.catalogFieldChoice input{margin:3px 0 0;accent-color:var(--accent)}
+.catalogFieldChoice input:disabled{cursor:default}
+.catalogFieldSelected{background:var(--accent-bg)}
+.catalogCompareDescription{max-height:170px;overflow:auto;white-space:pre-line;font-size:12px;line-height:1.6}
+.catalogCompareCover{width:100%;height:135px;object-fit:contain;background:var(--cover-bg);border-radius:6px}
+.catalogComparisonActions{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:20px}
+
+/* Align the title vertically when its optional details are absent. */
+.list:not(.compact) .gameBody.noCardDetails>h3{grid-row:1 / span 2;align-self:center;margin:0}
+.list:not(.compact) .gameBody.noCardDetails>.chips{grid-column:2;grid-row:1}
+.list:not(.compact) .gameBody.noCardDetails>.status{grid-column:3;grid-row:1}
+.list:not(.compact) .gameBody.noCardDetails>.meta{grid-row:2}
+.detailSource{margin:4px 0 18px;align-items:center;justify-content:space-between}
+.detailSource>*{flex:1;text-align:center}
+.brand .brandPrefix{transform:translateY(-.205em)}
+
+.libraryViewActions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}.libraryViewActions button{font-size:12px}#shareDialog{width:min(560px,94vw)}#shareResult{overflow-wrap:anywhere}

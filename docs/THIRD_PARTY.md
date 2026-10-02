@@ -1,7 +1,7 @@
 # Third-party components
 
 BackloGame bundles Python, pywebview, pythonnet, CLR Loader, Bottle, proxy_tools,
-typing_extensions and cffi. Their own license terms apply; license files are
+typing_extensions, cffi and Pillow. Their own license terms apply; license files are
 retained in the package. Microsoft WebView2 Evergreen is a system prerequisite
 and is not bundled with BackloGame.
 

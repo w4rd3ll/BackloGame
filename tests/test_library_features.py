@@ -30,6 +30,18 @@ class LibraryFeaturesTests(unittest.TestCase):
                 return job
             time.sleep(.01)
         self.fail('Job did not finish')
+    def test_series_default_and_partial_edits(self):
+        for value in (None, '', '   ', '-', '; - ;'):
+            game=server.save_game(dict(title='Default series', **({'series':value} if value is not None else {})))
+            self.assertEqual(game['series'],'Без серии')
+            with server.connection() as db:
+                self.assertEqual(json.loads(db.execute('SELECT payload FROM games WHERE id=?',(game['id'],)).fetchone()[0])['series'],'Без серии')
+        game=server.save_game({'title':'Portal','series':'Half-Life; Portal'})
+        edited=server.save_game({'title':'Portal','notes':'Keep series'},game['id'])
+        self.assertEqual(edited['series'],'Half-Life; Portal')
+        cleared=server.save_game({'title':'Portal','series':''},game['id'])
+        self.assertEqual(cleared['series'],'Без серии')
+
     def test_completed_date_default_and_validation(self):
         g=server.save_game({'title':'Test','status':'Пройдено'})
         self.assertRegex(g['completed_at'],r'^\d{4}-\d{2}-\d{2}$')

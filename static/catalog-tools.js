@@ -6,6 +6,7 @@ async function openCatalogUpdate(game,mode='metadata',requestedProvider=null,ori
   if(dirty){toast(t('Сначала сохрани изменения в карточке'),true);return;}
   if(catalogBatchRunning){toast(t('Дождись обновления каталога'),true);return;}
   if(mode==='cover'&&(!requestedProvider||requestedProvider==='steamgriddb')){await openSteamGrid(game,orientation);return;}
+  if(mode==='metadata'){await openCatalogComparison(game);return;}
   const provider=requestedProvider||(steamSource(game)?'steam':game.source_id?.startsWith('wiki:')?'wikipedia':'metacritic');
   const session=++catalogUpdateSession;
   catalogUpdateDialog.innerHTML=`<div class="dialogHead"><h2>${t(mode==='cover'?'Выбрать обложку из каталога':'Обновить сведения из каталога')}</h2><button id="closeCatalogUpdate" aria-label="${t('Закрыть')}">✕</button></div><p class="hint">${e(game.title)} · ${e(displayValue(game.platform))}</p><form id="catalogUpdateSearch"><input id="catalogUpdateQuery" value="${e(game.original_title||game.title)}" required maxlength="300" aria-label="${t('Название игры')}"><select id="catalogUpdateProvider" aria-label="${t('Источник')}"><option value="metacritic">Metacritic</option><option value="steam">Steam</option><option value="wikipedia">Wikipedia / Wikidata</option></select><button class="primary">${t('Найти')}</button></form><p class="hint">${t('Выбери соответствующую игру. Прогресс, даты прохождений, заметки и основная ссылка сохраняются.')}</p><div id="catalogUpdateResults"></div><div id="catalogUpdatePreview"></div>`;
@@ -40,6 +41,73 @@ async function openCatalogUpdate(game,mode='metadata',requestedProvider=null,ori
   }
   $('catalogUpdateSearch').onsubmit=event=>{event.preventDefault();search();};$('catalogUpdateProvider').onchange=()=>{if($('catalogUpdateProvider').value==='steamgriddb'){const format=$('catalogCoverOrientation').value;serial++;catalogUpdateDialog.close();openSteamGrid(game,format);}else search();};
   catalogUpdateDialog.showModal();await search();
+}
+const catalogComparisonFields=[['title','Название'],['description','Описание'],['genre','Жанры, через запятую'],['developer','Разработчик'],['available_platforms','Доступные платформы'],['release_date','Дата выхода'],['series','Серии, через ;'],['image','Обложка']];
+function catalogComparisonProviderLabel(provider){return {steam:'Steam',metacritic:'Metacritic',wikipedia:'Wikipedia / Wikidata'}[provider]||provider;}
+function catalogFieldValue(game,field){return field==='release_date'?(game.release_date||game.release_label||''):field==='image'?(game.custom_covers?.portrait?.url||game.image||''):game[field]||'';}
+function catalogChosenFields(selected,states){
+  return Object.fromEntries(Object.entries(selected).filter(([,provider])=>provider&&states[provider]?.game).map(([field,provider])=>[field,states[provider].source]));
+}
+async function openCatalogComparison(game){
+  const providers=['steam','metacritic','wikipedia'],session=++catalogUpdateSession;
+  const states=Object.fromEntries(providers.map(provider=>[provider,{items:[],game:null,source:'',loading:true,error:'',revision:0}]));
+  const selected={};let revision=0,applying=false;
+  catalogUpdateDialog.classList.add('catalogComparisonDialog');
+  catalogUpdateDialog.innerHTML=`<div class="dialogHead"><h2>${t('Обновить сведения из каталога')}</h2><button id="closeCatalogUpdate" aria-label="${t('Закрыть')}">✕</button></div><p class="hint">${e(game.title)} · ${e(displayValue(game.platform))}</p><form id="catalogUpdateSearch"><input id="catalogUpdateQuery" value="${e(game.original_title||game.title)}" required maxlength="300" aria-label="${t('Название игры')}"><button class="primary">${t('Найти во всех каталогах')}</button></form><p class="hint">${t('Выбери игру в каждом каталоге, затем отметь, какие сведения взять. Остальные поля сохранятся.')}</p><div id="catalogComparisonResults"></div><div class="catalogComparisonActions"><span id="catalogSelectionCount" class="hint" role="status"></span><button id="applyCatalogFields" class="primary" disabled>${t('Применить выбранное')}</button></div>`;
+  const active=()=>session===catalogUpdateSession&&catalogUpdateDialog.open;
+  const close=()=>{if(!applying){catalogUpdateDialog.close();++catalogUpdateSession;catalogUpdateDialog.classList.remove('catalogComparisonDialog');}};
+  $('closeCatalogUpdate').onclick=close;catalogUpdateDialog.oncancel=event=>{event.preventDefault();close();};
+  catalogUpdateDialog.onclick=event=>{if(event.target===catalogUpdateDialog){const r=catalogUpdateDialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)close();}};
+  function value(item,field){
+    const content=catalogFieldValue(item,field);
+    if(!content)return `<span class="hint">${t('Нет данных')}</span>`;
+    if(field==='image')return `<img class="catalogCompareCover" src="${e(item.custom_covers?.portrait?.local||item.image_local||content)}" alt="" referrerpolicy="no-referrer">`;
+    if(field==='description')return `<div class="catalogCompareDescription">${e(content)}</div>`;
+    return `<span>${e(Array.isArray(content)?content.join(', '):content)}</span>`;
+  }
+  function updateCount(){const count=Object.keys(catalogChosenFields(selected,states)).length;$('catalogSelectionCount').textContent=t('Выбрано полей:')+' '+count;$('applyCatalogFields').disabled=!count||applying;}
+  function draw(){
+    if(!active()||applying)return;
+    $('catalogComparisonResults').innerHTML=`<div class="catalogComparisonScroll"><table class="catalogComparisonTable"><thead><tr><th>${t('Поле')}</th><th>${t('Сейчас в библиотеке')}</th>${providers.map(provider=>{const state=states[provider];return `<th><strong>${e(catalogComparisonProviderLabel(provider))}</strong><select data-compare-provider="${provider}" aria-label="${e(catalogComparisonProviderLabel(provider))}: ${t('Выбрать игру')}" ${state.loading?'disabled':''}><option value="">${t('Выбрать игру')}</option>${state.items.map((item,index)=>`<option value="${index}" ${item.source_id===state.source?'selected':''}>${e(item.title)}</option>`).join('')}</select>${state.loading?`<p class="hint" role="status">${t('Загрузка…')}</p>`:state.error?`<p class="warning">${e(t(state.error))}</p>`:!state.items.length?`<p class="hint">${t('Ничего не найдено')}</p>`:''}</th>`;}).join('')}</tr></thead><tbody>${catalogComparisonFields.map(([field,label])=>`<tr><th scope="row">${t(label)}</th><td class="${!selected[field]?'catalogFieldSelected':''}"><label class="catalogFieldChoice"><input type="radio" name="catalog-field-${field}" data-compare-field="${field}" value="" ${!selected[field]?'checked':''} aria-label="${t(label)}: ${t('Оставить текущее')}">${value(game,field)}</label></td>${providers.map(provider=>{const state=states[provider],available=state.game&&catalogFieldValue(state.game,field);return `<td class="${selected[field]===provider?'catalogFieldSelected':''}"><label class="catalogFieldChoice"><input type="radio" name="catalog-field-${field}" data-compare-field="${field}" value="${provider}" ${selected[field]===provider?'checked':''} ${!available||state.loading?'disabled':''} aria-label="${t(label)}: ${e(catalogComparisonProviderLabel(provider))}">${state.game?value(state.game,field):'<span class="hint">—</span>'}</label></td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;
+    $('catalogComparisonResults').querySelectorAll('[data-compare-field]').forEach(input=>input.onchange=()=>{selected[input.dataset.compareField]=input.value;draw();});
+    $('catalogComparisonResults').querySelectorAll('[data-compare-provider]').forEach(input=>input.onchange=()=>selectCandidate(input.dataset.compareProvider,input.value));
+    updateCount();
+  }
+  async function selectCandidate(provider,index){
+    const state=states[provider],item=state.items[Number(index)],selection=++state.revision,searchRevision=revision;
+    for(const field of Object.keys(selected))if(selected[field]===provider)delete selected[field];
+    state.game=null;state.source='';state.error='';
+    if(index===''||!item){draw();return;}
+    state.source=item.source_id;state.loading=true;draw();
+    try{const fresh=await api('/api/details?source='+encodeURIComponent(item.source_id));if(active()&&revision===searchRevision&&selection===state.revision)state.game=fresh;}
+    catch(error){if(active()&&revision===searchRevision&&selection===state.revision)state.error=error.message;}
+    finally{if(active()&&revision===searchRevision&&selection===state.revision){state.loading=false;draw();}}
+  }
+  async function search(){
+    if(applying)return;
+    const searchRevision=++revision,query=$('catalogUpdateQuery').value.trim();
+    for(const field of Object.keys(selected))delete selected[field];
+    for(const state of Object.values(states)){state.items=[];state.game=null;state.source='';state.error='';state.loading=true;state.revision++;}draw();
+    const normalize=text=>text.toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+    await Promise.allSettled(providers.map(async provider=>{
+      const state=states[provider];
+      try{
+        const result=await api('/api/search?q='+encodeURIComponent(query)+'&provider='+provider);
+        if(!active()||revision!==searchRevision)return;
+        state.items=result.items;state.loading=false;draw();
+        const exact=state.items.map((item,index)=>({item,index})).filter(({item})=>normalize(item.title)===normalize(query));
+        if(exact.length===1)await selectCandidate(provider,String(exact[0].index));
+      }catch(error){if(active()&&revision===searchRevision){state.error=error.message;state.loading=false;draw();}}
+    }));
+  }
+  $('catalogUpdateSearch').onsubmit=event=>{event.preventDefault();search();};
+  $('applyCatalogFields').onclick=()=>busy($('applyCatalogFields'),async()=>{
+    const fields=catalogChosenFields(selected,states);if(!Object.keys(fields).length)return;
+    applying=true;catalogUpdateDialog.querySelectorAll('input,select,button').forEach(input=>input.disabled=true);
+    try{await api('/api/catalog/apply',{id:game.id,mode:'metadata',fields});await reload();renderInspector();applying=false;close();toast(t('Сведения обновлены'));}
+    finally{applying=false;if(active()){catalogUpdateDialog.querySelectorAll('input,select,button').forEach(input=>input.disabled=false);draw();}}
+  });
+  catalogUpdateDialog.showModal();draw();await search();
 }
 const inspectorBeforeCatalog=renderInspector;
 renderInspector=function(){

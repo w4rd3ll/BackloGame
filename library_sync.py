@@ -342,9 +342,11 @@ class Manager:
             games = list(consolidated.values())
             new_ids, baseline = self.steam_history(data.get('profile'),games) if provider=='steam' else (set(),False)
             existing = self.store.library()
-            by_source = {g['source_id']:g for g in existing if g.get('source_id')}
+            by_source = {}
             by_title = {}
-            for g in existing: by_title.setdefault(identity(g), []).append(g)
+            for g in existing:
+                for source in set([g.get('source_id'),*g.get('source_aliases',[])])-{None,''}:by_source.setdefault(source,[]).append(g)
+                for pair in {identity(card) for card in [g,*g.get('merge_archive',[])]}:by_title.setdefault(pair, []).append(g)
             seen = set()
             records = []
             for game in games:
@@ -353,9 +355,9 @@ class Manager:
                 if unique in seen: continue
                 seen.add(unique)
                 exact = by_source.get(game.get('source_id'))
-                candidates = [exact] if exact and (provider=='steam' or identity(exact)==pair) else by_title.get(pair, [])
+                candidates = exact if exact else by_title.get(pair, [])
                 if provider=='steam':
-                    candidates = [g for g in candidates if not str(g.get('source_id','')).startswith('steam:') or g['source_id']==game['source_id']]
+                    candidates = [g for g in candidates if not str(g.get('source_id','')).startswith('steam:') or g['source_id']==game['source_id'] or game['source_id'] in g.get('source_aliases',[])]
                 old = candidates[0] if len(candidates)==1 else None
                 records.append(dict(game, existing_id=old['id'] if old else None,
                                     steam_new=game.get('source_id') in new_ids,
@@ -398,11 +400,11 @@ class Manager:
                 for index, (record_index, game) in enumerate(records):
                     with self.store.MUTATION_LOCK:
                         current = self.store.library()
-                        matches = [g for g in current if identity(game)==identity(g)]
+                        matches = [g for g in current if any(identity(game)==identity(card) for card in [g,*g.get('merge_archive',[])])]
                         if game.get('sync_provider')=='steam':
-                            matches = [g for g in matches if not str(g.get('source_id','')).startswith('steam:') or g['source_id']==game['source_id']]
-                            exact = next((g for g in current if g.get('source_id')==game['source_id']),None)
-                            if exact: matches = [exact]
+                            matches = [g for g in matches if not str(g.get('source_id','')).startswith('steam:') or g['source_id']==game['source_id'] or game['source_id'] in g.get('source_aliases',[])]
+                        exact = [g for g in current if g.get('source_id')==game.get('source_id') or game.get('source_id') in g.get('source_aliases',[])]
+                        if exact: matches = exact
                         old = next((g for g in matches if g['id']==game.get('existing_id')),None) or (matches[0] if len(matches)==1 else None)
                     if len(matches)>1 and old is None:
                         raise ValueError('Неоднозначное совпадение. Сопоставь игры вручную.')
@@ -419,6 +421,8 @@ class Manager:
                                     value = ', '.join(dict.fromkeys([x.strip() for x in (old.get('tags','')+','+str(value)).split(',') if x.strip()]))
                                 if value and (field=='tags' or choice.get('overwrite') or not old.get(field)):
                                     patch[field] = value
+                            if 'completed_at' in fields:
+                                patch['playthroughs'] = self.store.merge_playthroughs(self.store.playthroughs(old), self.store.playthroughs(game))
                             patch.update({k:game[k] for k in ('hltb_entries','hltb_game_id','hltb_url','hltb_updated_at','sync_added_at','sync_status') if k in game})
                             with self.store.MUTATION_LOCK: self.store.save_game(patch,old['id'])
                             job['updated'] += 1

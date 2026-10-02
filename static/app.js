@@ -1,6 +1,6 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let statuses = ['Хочу пройти', 'Играю', 'Пройдено', 'Отложено', 'Брошено'];
+let statuses = ['Хочу пройти', 'Играю', 'Перепрохожу', 'Пройдено', 'Отложено', 'Брошено'];
 const icons = ['◈', '◷', '▷', '✓', 'Ⅱ', '×'];
 let games = [], token = '', selectedId = null, statusFilter = '', direction = -1, viewMode = 'cards';
 let catalogSerial = 0, toastTimer, dirty = false;
@@ -43,22 +43,31 @@ function descriptionPreview(text) {
   const space=start.lastIndexOf(' ');
   return start.slice(0,space>300?space:420).trimEnd()+'…';
 }
-const coverSource=game=>game.image_local||game.image;
+const coverSource=(game,orientation='portrait')=>game.custom_covers?.[orientation]?.local||game.custom_covers?.[orientation]?.url||game.image_local||game.image;
+const cropArtwork=game=>game.custom_covers?.portrait?{image:game.custom_covers.portrait.url,src:coverSource(game)}:{image:game.image,src:game.image_local||game.image};
+function thumbnailSource(game){
+  const image=game.thumbnail_crop?.image;if(!image)return '';
+  for(const cover of Object.values(game.custom_covers||{}))if(cover.url===image)return cover.local||cover.url;
+  return image===game.image?game.image_local||game.image:'';
+}
 function croppedCover(image,crop,cls='cover',id='') {
   return `<div class="${cls} thumbnailCrop" ${id?`data-cover-id="${id}"`:''}><img src="${e(image)}" alt="" draggable="false" referrerpolicy="no-referrer" data-crop-width="${crop.width}" data-crop-height="${crop.height}" data-crop-x="${crop.x}" data-crop-y="${crop.y}"></div>`;
 }
 function cover(game, cls = 'cover') {
-  if(!game.image)return '<div class="coverFallback">✦</div>';
-  if(cls==='cover'&&game.thumbnail_crop?.image===game.image)return croppedCover(coverSource(game),game.thumbnail_crop,cls,game.id);
-  return `<img class="${cls}" data-cover-id="${game.id}" src="${e(coverSource(game))}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer" ${cls==='detailImage'?t("tabindex=\"0\" title=\"Правый клик — выбрать миниатюру\""):''}>`;
+  const orientation=cls==='cover'&&viewMode!=='cards'?'landscape':'portrait',src=coverSource(game,orientation);
+  if(cls==='cover'&&viewMode!=='cards'&&thumbnailSource(game))return croppedCover(thumbnailSource(game),game.thumbnail_crop,cls,game.id);
+  if(!src)return '<div class="coverFallback">✦</div>';
+  if(cls==='cover'&&viewMode==='cards')return `<div class="cardArtwork" data-cover-id="${game.id}"><img class="cardBackdrop" src="${e(src)}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer" aria-hidden="true"><img class="cover" src="${e(src)}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer"></div>`;
+  return `<img class="${cls}" data-cover-id="${game.id}" src="${e(src)}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer" ${cls==='detailImage'?t("tabindex=\"0\" title=\"Правый клик — выбрать миниатюру\""):''}>`;
 }
 function wireImages(root) { root.querySelectorAll('img').forEach(img => {
   if(img.dataset.cropWidth){const {cropWidth:w,cropHeight:h,cropX:x,cropY:y}=img.dataset;Object.assign(img.style,{width:100/w+'%',height:100/h+'%',left:-100*x/w+'%',top:-100*y/h+'%'});}
-  img.addEventListener('error', () => { const placeholder = document.createElement('div'); placeholder.className = 'coverFallback'; placeholder.textContent = '✦'; img.replaceWith(placeholder); }, {once:true});
+  img.addEventListener('error', () => { if(img.classList.contains('cardBackdrop')){img.remove();return;}const placeholder = document.createElement('div'); placeholder.className = 'coverFallback'; placeholder.textContent = '✦'; img.replaceWith(placeholder); }, {once:true});
 }); }
+function steamSource(game){return [game.source_id,...(game.source_aliases||[])].find(x=>/^steam:\d+$/.test(x||''))||'';}
 function gameResources(game) {
   const title = game.original_title || game.title;
-  const appid = /^steam:(\d+)$/.exec(game.source_id || '')?.[1];
+  const appid = /^steam:(\d+)$/.exec(steamSource(game))?.[1];
   let wikipedia = `https://${uiLanguage}.wikipedia.org/w/index.php?search=` + encodeURIComponent(title);
   for (const value of [game.description_url, game.source_url]) {
     try { const url = new URL(value); if(url.protocol==='https:' && /^(?:[a-z-]+\.)?wikipedia\.org$/.test(url.hostname)) { wikipedia=url.href;break; } } catch {}
@@ -123,12 +132,13 @@ function filteredGames() {
 }
 function gameContent(g){
   if(viewMode==='compact')return `${cover(g)}<span class="compactTitle" title="${e(g.title)}">${e(g.title)}</span><span class="compactPlatform" title="${e(displayValue(g.platform||'Пока неизвестно'))}">${e(displayValue(g.platform||'Пока неизвестно'))}</span><span class="compactStatus status ${g.status==='Играю'?'playing':g.status==='Пройдено'?'done':''}" title="${e(displayValue(g.status))}">${e(displayValue(g.status))}</span>`;
-  return `${cover(g)}<div class="gameBody"><h3>${e(g.title)}</h3><div class="chips">${g.favorite?`<span class="chip favoriteMark">${t("★ Избранное")}</span>`:''}<span class="chip">${e(displayValue(g.platform || 'Пока неизвестно'))}</span>${g.priority==='Высокий'?`<span class="chip">${t("★ В приоритете")}</span>`:''}</div><span class="status ${g.status==='Играю'?'playing':g.status==='Пройдено'?'done':''}">○ ${e(displayValue(g.status))}</span><p class="note">${e(g.notes || g.series || t("Добавь свою заметку…"))}</p><div class="meta">${t("Выход:")} ${e(dateText(g.release_date) === t("Не указана") ? g.release_label || t("Не указана") : dateText(g.release_date))} ${t("· Добавлено")} ${e(dateText(g.added_at))}</div></div>`;
+  const note=viewMode==='cards'?[g.notes,g.series].find(value=>String(value||'').trim()&&!/^[\s\-–—]+$/.test(value)):g.notes||g.series||t('Добавь свою заметку…');
+  return `${cover(g)}<div class="gameBody"><h3>${e(g.title)}</h3><div class="chips">${g.favorite&&viewMode!=='cards'?`<span class="chip favoriteMark">${t("★ Избранное")}</span>`:''}<span class="chip">${e(displayValue(g.platform || 'Пока неизвестно'))}</span>${g.priority==='Высокий'?`<span class="chip">${t("★ В приоритете")}</span>`:''}</div><span class="status ${g.status==='Играю'?'playing':g.status==='Пройдено'?'done':''}">○ ${e(displayValue(g.status))}</span>${note?`<p class="note">${e(note)}</p>`:''}<div class="meta">${t("Выход:")} ${e(dateText(g.release_date) === t("Не указана") ? g.release_label || t("Не указана") : dateText(g.release_date))} ${t("· Добавлено")} ${e(dateText(g.added_at))}</div></div>`;
 }
 function render() {
   applyPanels();
   if(preferences.hidden_categories.includes(statusFilter)) statusFilter='';
-  $('statusNav').innerHTML = ['',...statuses].map((status,i) => `<button class="${statusFilter===status?'active':''}" data-status="${e(status)}"><span>${icons[i]||'○'} &nbsp; ${e(status?displayValue(status):t('Все игры'))}</span><span class="badge">${games.filter(g => !status || g.status===status).length}</span></button>`).join('') + `<button class="${statusFilter==='favorites'?'active':''}" data-status="favorites"><span>${t("★ &nbsp; Избранное")}</span><span class="badge">${games.filter(g=>g.favorite).length}</span></button><button class="${statusFilter==='not-favorites'?'active':''}" data-status="not-favorites"><span>${t("☆ &nbsp; Не в избранном")}</span><span class="badge">${games.filter(g=>!g.favorite).length}</span></button>`;
+  $('statusNav').innerHTML = ['',...statuses].map((status,i) => `<button class="${statusFilter===status?'active':''}" data-status="${e(status)}"><span>${({'':'◈','Хочу пройти':'◷','Бэклог':'◷','Играю':'▷','Перепрохожу':'↻','Пройдено':'✓','Отложено':'Ⅱ','Брошено':'×'})[status]||'○'} &nbsp; ${e(status?displayValue(status):t('Все игры'))}</span><span class="badge">${games.filter(g => !status || g.status===status).length}</span></button>`).join('') + `<button class="${statusFilter==='favorites'?'active':''}" data-status="favorites"><span>${t("★ &nbsp; Избранное")}</span><span class="badge">${games.filter(g=>g.favorite).length}</span></button><button class="${statusFilter==='not-favorites'?'active':''}" data-status="not-favorites"><span>${t("☆ &nbsp; Не в избранном")}</span><span class="badge">${games.filter(g=>!g.favorite).length}</span></button>`;
   $('statusNav').querySelectorAll('button').forEach(b => b.onclick = () => { statusFilter=b.dataset.status; render(); persistView(); });
   $('statusNav').querySelectorAll('button').forEach(b=>{b.hidden=preferences.hidden_categories.includes(b.dataset.status);});
   if(preferences.hidden_categories.includes(statusFilter)) statusFilter='';
@@ -190,8 +200,8 @@ $('addDialog').addEventListener('click',event=>{const box=$('addDialog').getBoun
 $('addDialog').addEventListener('cancel',()=>{catalogSerial++;});
 $('catalogForm').onsubmit=async event=>{event.preventDefault();const serial=++catalogSerial;await busy(event.submitter,async()=>{$('catalogResults').innerHTML=`<p class="loading">${t("Ищем в каталоге…")}</p>`;try{const result=await api('/api/search?q='+encodeURIComponent($('catalogQuery').value)+'&provider='+$('provider').value+'&include_extras='+Number($('includeSteamExtras').checked));if(serial!==catalogSerial)return;$('catalogResults').innerHTML=result.items.length?result.items.map((g,i)=>`<div class="catalogRow">${g.image?`<img src="${e(g.image)}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer">`:''}<div class="catalogText"><strong>${e(g.title)}</strong><small class="catalogKind">${e(providerLabel(g.provider))}${g.release_date?' · '+e(g.release_date):''}</small>${g.description?`<p>${e(g.description)}</p>`:''}${exists(g)?`<small>${t("Уже в библиотеке")}</small>`:''}</div><button data-index="${i}" ${exists(g)?'disabled':''}>${t("Добавить")}</button></div>`).join(''):`<p class="hint">${t("Ничего не найдено. Попробуй другое название, другой каталог или ручное добавление.")}</p>`;wireImages($('catalogResults'));$('catalogResults').querySelectorAll('button').forEach(b=>b.onclick=()=>busy(b,async()=>{const item=result.items[Number(b.dataset.index)];const enriched=await api('/api/details?source='+encodeURIComponent(item.source_id));const saved=await api('/api/save',{game:{...item,...Object.fromEntries(Object.entries(enriched).filter(([k,v])=>v!==''&&v!=null))}});await reload();selectGame(saved.id,true);b.textContent=t("Добавлено");toast(t(enriched.metadata_warning) || t("Добавлено в библиотеку."));b.dataset.added='yes';}).then(()=>{if(b.dataset.added){b.disabled=true;b.textContent=t("Добавлено");}}));}catch(err){if(serial===catalogSerial)$('catalogResults').innerHTML=`<p class="warning">${e(err.message)}</p>`;throw err;}});};
 $('manualForm').onsubmit=async event=>{event.preventDefault();await busy(event.submitter,async()=>{const saved=await api('/api/save',{game:{title:$('manualTitle').value,platform:$('manualPlatform').value||'Пока неизвестно'}});await reload();selectGame(saved.id,true);$('manualTitle').value='';$('addDialog').close();toast(t("Игра добавлена"));});};
-['librarySearch','releaseFrom','releaseTo','addedFrom','addedTo'].forEach(id=>$(id).oninput=render);
-['platformFilter','genreFilter','seriesFilter','tagFilter','unknownRelease','priorityFilter'].forEach(id=>$(id).onchange=render);
+['librarySearch','releaseFrom','releaseTo','addedFrom','addedTo'].forEach(id=>$(id).oninput=()=>render());
+['platformFilter','genreFilter','seriesFilter','tagFilter','unknownRelease','priorityFilter'].forEach(id=>$(id).onchange=()=>render());
 $('sortField').onchange=()=>{render();persistView();};$('sortDirection').onclick=()=>{direction*=-1;render();persistView();};$('viewToggle').onchange=()=>{viewMode=$('viewToggle').value;render();persistView();};
 $('resetFilters').onclick=()=>{['platformFilter','genreFilter','seriesFilter','tagFilter','priorityFilter','releaseFrom','releaseTo','addedFrom','addedTo','librarySearch'].forEach(id=>$(id).value='');$('unknownRelease').checked=false;render();};
 $('exportButton').onclick=()=>busy($('exportButton'),async()=>{const data=await api('/api/export');const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`BackloGame-${localDay(new Date())}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(t("Экспорт библиотеки готов"));});
@@ -205,7 +215,7 @@ function renderSettings() {
   const categories=[...statuses,'favorites','not-favorites'];
   const label=value=>value==='favorites'?t("★ Избранное"):value==='not-favorites'?t("☆ Не в избранном"):displayValue(value);
   const manager=(kind,names,title)=>{const editable=kind==='platform'?names.filter(n=>n!=='Пока неизвестно'):names;return `<section class="settingsSection"><h3>${title}</h3><div class="settingsRow"><input id="${kind}AddName" placeholder="${t("Новое название")}" maxlength="${kind==='category'?100:300}"><button data-kind="${kind}" data-action="add">${t("Добавить")}</button></div><div class="settingsRow"><select id="${kind}Name" aria-label="${title}${t(": выбрать")}">${editable.length?editable.map(n=>`<option value="${e(n)}">${e(displayValue(n))}</option>`).join(''):`<option value="">${t("Нет платформ для изменения")}</option>`}</select><span id="${kind}Usage" class="hint"></span></div><div class="settingsRow"><input id="${kind}RenameName" placeholder="${t("Новое имя выбранного элемента")}"><button data-kind="${kind}" data-action="rename">${t("Переименовать")}</button></div><label>${t("При удалении перенести игры в")}<select id="${kind}Replacement">${names.map(n=>`<option value="${e(n)}" ${kind==='platform'&&n==='Пока неизвестно'?'selected':''}>${e(displayValue(n))}</option>`).join('')}</select></label><button class="danger" data-kind="${kind}" data-action="delete">${t("Удалить выбранный элемент")}</button><p class="hint">${t("Переименование и перенос применяются ко всем играм этой")} ${kind==='category'?t("категории"):t("платформы")}.${kind==='platform'?t(" Можно перенести в «Пока неизвестно», затем выбрать отдельную платформу в карточке каждой игры."):''}</p></section>`;};
-  $('settingsContent').innerHTML=`<section class="settingsSection"><h3>${t("Разделы в левом меню")}</h3><p class="hint">${t("Скрытие раздела не удаляет игры. «Все игры» всегда доступен.")}</p><form id="viewSettings"><label>${t("Язык интерфейса")}<select name="language"><option value="en" ${uiLanguage==='en'?'selected':''}>English</option><option value="ru" ${uiLanguage==='ru'?'selected':''}>Русский</option></select></label>${themePicker()}<div class="categoryChecks">${categories.map(value=>`<label class="check"><input type="checkbox" name="visibleCategory" value="${e(value)}" ${preferences.hidden_categories.includes(value)?'':'checked'}>${e(label(value))}</label>`).join('')}</div><label>${t("Категория для новых игр")}<select name="defaultCategory">${statuses.map(value=>`<option value="${e(value)}" ${preferences.default_category===value?'selected':''}>${e(displayValue(value))}</option>`).join('')}</select></label><label class="check"><input type="checkbox" name="showNotes" ${preferences.show_card_notes?'checked':''}> ${t("Показывать заметки на карточках")}</label><p id="settingsStatus" class="hint">${t("Изменения вида сохраняются автоматически.")}</p></form></section>${manager('category',statuses,t("Категории"))}${manager('platform',availablePlatforms(),t("Платформы"))}<section class="settingsSection"><h3>${t("Обложки")}</h3><p class="hint">${t("Локально сохранено:")} ${games.filter(g=>g.image_local).length} ${t("из")} ${games.filter(g=>g.image).length}${t(". Новые обложки сохраняются автоматически.")}</p><div class="settingsRow"><button id="cacheAllCovers">${t("Сохранить имеющиеся обложки")}</button><button id="refreshSteamCovers">${t("Обновить все обложки Steam")}</button></div><p id="coverUpdateProgress" class="hint">${t("При ошибке обновления сохранённая обложка остаётся.")}</p></section>`;
+  $('settingsContent').innerHTML=`<section class="settingsSection"><h3>${t("Разделы в левом меню")}</h3><p class="hint">${t("Скрытие раздела не удаляет игры. «Все игры» всегда доступен.")}</p><form id="viewSettings"><label>${t("Язык интерфейса")}<select name="language"><option value="en" ${uiLanguage==='en'?'selected':''}>English</option><option value="ru" ${uiLanguage==='ru'?'selected':''}>Русский</option></select></label>${themePicker()}<div class="categoryChecks">${categories.map(value=>`<label class="check"><input type="checkbox" name="visibleCategory" value="${e(value)}" ${preferences.hidden_categories.includes(value)?'':'checked'}>${e(label(value))}</label>`).join('')}</div><label>${t("Категория для новых игр")}<select name="defaultCategory">${statuses.map(value=>`<option value="${e(value)}" ${preferences.default_category===value?'selected':''}>${e(displayValue(value))}</option>`).join('')}</select></label><label class="check"><input type="checkbox" name="showNotes" ${preferences.show_card_notes?'checked':''}> ${t("Показывать заметки на карточках")}</label><p id="settingsStatus" class="hint">${t("Изменения вида сохраняются автоматически.")}</p></form></section>${manager('category',statuses,t("Категории"))}${manager('platform',availablePlatforms(),t("Платформы"))}<section class="settingsSection"><h3>${t("Обложки")}</h3><p class="hint">${t("Локально сохранено:")} ${games.filter(g=>g.image_local).length} ${t("из")} ${games.filter(g=>g.image).length}${t(". Новые обложки сохраняются автоматически.")}</p><div class="settingsRow"><button id="cacheAllCovers">${t("Сохранить имеющиеся обложки")}</button></div><p id="coverUpdateProgress" class="hint">${t("При ошибке обновления сохранённая обложка остаётся.")}</p></section>`;
   const sections=[...$('settingsContent').children];
   const tabs=[['general',t("Меню и вид")],['category',t("Категории")],['platform',t("Платформы")],['covers',t("Обложки")]];
   const navigation=document.createElement('div');navigation.className='settingsTabs';navigation.setAttribute('role','tablist');navigation.setAttribute('aria-label',t("Разделы настроек"));
@@ -223,7 +233,7 @@ function renderSettings() {
   });
   activate(activeSettingsTab);
   bindThemePicker();
-  $('cacheAllCovers').onclick=()=>updateAllCovers(false);$('refreshSteamCovers').onclick=()=>updateAllCovers(true);
+  $('cacheAllCovers').onclick=()=>updateAllCovers();
   $('viewSettings').onchange=async()=>{
     if(settingsSaving)return;settingsSaving=true;
     const controls=[...$('viewSettings').querySelectorAll('input,select')];controls.forEach(x=>x.disabled=true);
@@ -250,24 +260,19 @@ $('closeSettings').onclick=()=>$('settingsDialog').close();
 $('settingsDialog').addEventListener('click',event=>{if(event.target!==$('settingsDialog'))return;const rect=$('settingsDialog').getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)$('settingsDialog').close();});
 
 let coversUpdating=false;
-async function refreshOneCover(game){
-  if(coversUpdating){toast(t("Дождись обновления обложек"));return;}
-  coversUpdating=true;
-  try{toast(t("Обновляем обложку Steam…"));const fresh=await api('/api/covers/refresh',{id:game.id});Object.assign(game,fresh);render();updateDisplayedCover(game);toast(t("Обложка Steam обновлена"));}catch(err){toast(err.message,true);}finally{coversUpdating=false;}
-}
 function updateDisplayedCover(game){
   if(selectedId===game.id){const image=$('inspector').querySelector('.detailImage');if(image)image.src=coverSource(game);}
 }
-async function updateAllCovers(steam){
+async function updateAllCovers(){
   if(coversUpdating||settingsSaving){toast(t("Дождись текущего сохранения"));return;}
   coversUpdating=true;settingsSaving=true;
-  const queue=games.filter(g=>steam?/^steam:\d+$/.test(g.source_id||''):g.image&&!g.image_local);
+  const queue=games.filter(g=>g.image&&!g.image_local);
   const controls=[...$('settingsContent').querySelectorAll('button,input,select')];controls.forEach(b=>b.disabled=true);
   let done=0,failed=[];
   try{
     for(const game of queue){
       if($('coverUpdateProgress'))$('coverUpdateProgress').textContent=`${t("Обложки:")} ${done+failed.length+1} ${t("из")} ${queue.length} · ${game.title}`;
-      try{const fresh=await api(steam?'/api/covers/refresh':'/api/covers/cache',{id:game.id});Object.assign(game,fresh);updateDisplayedCover(game);done++;}catch(err){failed.push(game.title+': '+err.message);}
+      try{const fresh=await api('/api/covers/cache',{id:game.id});Object.assign(game,fresh);updateDisplayedCover(game);done++;}catch(err){failed.push(game.title+': '+err.message);}
     }
     render();renderSettings();
     $('coverUpdateProgress').textContent=`${t("Готово:")} ${done}${t(". Ошибок:")} ${failed.length}.${failed.length?' '+failed.join(' · '):''}`;

@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent
 DATA = ROOT / 'data'
 DB = DATA / 'library.sqlite3'
 TOKEN = secrets.token_urlsafe(32)
-STATUSES = ['Хочу пройти', 'Играю', 'Пройдено', 'Отложено', 'Брошено']
+STATUSES = ['Хочу пройти', 'Играю', 'Перепрохожу', 'Пройдено', 'Отложено', 'Брошено']
 DEFAULT_PLATFORMS = ['Пока неизвестно','PC','Steam Deck','PlayStation 5','PlayStation 4','Xbox Series X/S','Xbox One','Nintendo Switch','Nintendo Switch 2','Android','iOS','Эмулятор']
 DEFAULT_SETTINGS = {'hidden_categories': [], 'show_card_notes': True, 'default_category': 'Хочу пройти', 'language': 'en'}
 DEFAULT_SETTINGS['category_sorts'] = {}
@@ -421,6 +421,9 @@ def init_db():
             for index, name in enumerate(dict.fromkeys(x for x in names if x)):
                 db.execute('INSERT OR IGNORE INTO categories VALUES (?,?)', (name,index))
             db.execute('INSERT INTO settings VALUES (?,?)', ('categories_seeded','true'))
+        if not db.execute('SELECT 1 FROM settings WHERE name=?', ('replaying_seeded',)).fetchone():
+            db.execute("INSERT OR IGNORE INTO categories VALUES ('Перепрохожу',(SELECT COALESCE(MAX(position),0)+1 FROM categories))")
+            db.execute("INSERT INTO settings VALUES ('replaying_seeded','true')")
         if 'manual_order' not in [row[1] for row in db.execute('PRAGMA table_info(games)')]:
             db.execute('ALTER TABLE games ADD COLUMN manual_order INTEGER NOT NULL DEFAULT 0')
             for index, (gid,) in enumerate(db.execute('SELECT id FROM games ORDER BY id').fetchall()):
@@ -434,9 +437,59 @@ def init_db():
                 db.execute('INSERT OR IGNORE INTO platforms(name) VALUES (?)', (platform,))
 
 
+def playthroughs(game):
+    if 'playthroughs' in game:
+        return [dict(row) for row in game['playthroughs']]
+    dates = list(game.get('completion_dates', [])) if 'completion_dates' in game else None
+    entries = []
+    for row in game.get('hltb_entries', []):
+        date = str(row.get('date_complete') or '')[:10]
+        try:
+            if re.fullmatch(r'\d{4}-\d{2}-\d{2}', date):
+                datetime.fromisoformat(date)
+                entries.append({'date':date,'platform':str(row.get('platform') or game.get('platform') or 'Пока неизвестно')})
+        except ValueError: pass
+    if dates is not None:
+        history = []
+        for date in dates:
+            matching = next((row for row in entries if row['date']==date),None)
+            history.append(matching or {'date':date,'platform':game.get('platform') or 'Пока неизвестно'})
+            if matching: entries.remove(matching)
+        return history
+    date = game.get('completed_at','')
+    if date and not any(row['date']==date for row in entries):
+        try:
+            if re.fullmatch(r'\d{4}-\d{2}-\d{2}',date):
+                datetime.fromisoformat(date)
+                entries.append({'date':date,'platform':game.get('platform') or 'Пока неизвестно'})
+        except ValueError: pass
+    return sorted(entries,key=lambda row:row['date'])
+
+
+def completion_dates(game):
+    return [row['date'] for row in playthroughs(game)]
+
+
+def merge_playthroughs(first, second):
+    from collections import Counter
+    counts = Counter((row['date'], row['platform']) for row in first) | Counter((row['date'], row['platform']) for row in second)
+    return sorted([{'date':date, 'platform':platform} for (date,platform),count in counts.items() for _ in range(count)], key=lambda row:row['date'])
+
+
+def merge_completion_dates(first, second):
+    from collections import Counter
+    counts = Counter(first) | Counter(second)
+    return sorted(counts.elements())
+
+
+def with_completion_dates(game):
+    dates = completion_dates(game)
+    return dict(game, playthroughs=playthroughs(game), completion_dates=dates, completed_at=max(dates, default=''))
+
+
 def library():
     with connection() as db:
-        return [dict(json.loads(payload), id=gid, manual_order=order) for gid, payload, order in db.execute('SELECT id,payload,manual_order FROM games ORDER BY manual_order,id')]
+        return [with_completion_dates(dict(json.loads(payload), id=gid, manual_order=order)) for gid, payload, order in db.execute('SELECT id,payload,manual_order FROM games ORDER BY manual_order,id')]
 
 
 def platform_names():
@@ -601,6 +654,15 @@ FIELDS.update({'hltb_game_id','hltb_url','hltb_updated_at','hltb_previous_status
 
 def validate(data, allowed_statuses=None):
     result = {k: str(v or '').strip() for k, v in data.items() if k in FIELDS and k not in ('favorite', 'thumbnail_crop')}
+    if 'custom_covers' in data:
+        covers=data['custom_covers']
+        if not isinstance(covers,dict) or set(covers)-{'portrait','landscape'}:raise ValueError('Invalid custom covers')
+        result['custom_covers']={}
+        for orientation,row in covers.items():
+            if not isinstance(row,dict) or not isinstance(row.get('url'),str) or not row['url'].startswith('https://') or len(row['url'])>20000 or not isinstance(row.get('author',''),str) or len(row.get('author',''))>300:raise ValueError('Invalid custom cover')
+            local=row.get('local','')
+            if not isinstance(local,str) or local and not re.fullmatch(r'/covers/[a-f0-9]{64}\.(?:png|jpg|gif|webp)',local):raise ValueError('Invalid custom cover file')
+            result['custom_covers'][orientation]={'url':row['url'],'local':local if local and (DATA/local.lstrip('/')).is_file() else '', 'author':row.get('author',''),'asset':row.get('asset')}
     if data.get('media_type') not in (None, '', 'game'):
         raise ValueError('В библиотеку можно добавлять только игры')
     if 'thumbnail_crop' in data:
@@ -644,6 +706,30 @@ def validate(data, allowed_statuses=None):
             if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', result[field]):
                 raise ValueError('Дата прохождения: ГГГГ-ММ-ДД')
             datetime.fromisoformat(result[field])
+    if 'playthroughs' in data:
+        history = data['playthroughs']
+        if not isinstance(history,list) or len(history)>1000 or any(not isinstance(row,dict) or set(row)-{'date','platform'} for row in history):
+            raise ValueError('Invalid playthrough history')
+        for row in history:
+            if not isinstance(row.get('date'),str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',row['date']) or not isinstance(row.get('platform'),str) or not 0<len(row['platform'])<=140:
+                raise ValueError('Invalid playthrough history')
+            datetime.fromisoformat(row['date'])
+        result['playthroughs'] = sorted(history,key=lambda row:row['date'])
+    if 'source_aliases' in data:
+        aliases=data['source_aliases']
+        if not isinstance(aliases,list) or len(aliases)>100 or any(not isinstance(x,str) or len(x)>300 for x in aliases):raise ValueError('Invalid source aliases')
+        result['source_aliases']=list(dict.fromkeys(aliases))
+    if 'merge_archive' in data:
+        archive = data['merge_archive']
+        if not isinstance(archive,list) or len(archive)>100 or any(not isinstance(row,dict) or 'merge_archive' in row for row in archive) or len(json.dumps(archive))>5000000:
+            raise ValueError('Invalid merge archive')
+        result['merge_archive'] = archive
+    if 'completion_dates' in data:
+        dates = data['completion_dates']
+        if not isinstance(dates,list) or len(dates)>1000 or any(not isinstance(x,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}',x) for x in dates):
+            raise ValueError('Invalid completion dates')
+        for date in dates: datetime.fromisoformat(date)
+        result['completion_dates'] = sorted(dates)
     if 'hltb_entries' in data:
         entries = data['hltb_entries']
         if not isinstance(entries, list) or len(entries)>200 or any(not isinstance(x,dict) for x in entries):
@@ -689,23 +775,11 @@ def archive_cover(url):
     return '/covers/' + name
 
 
-def update_cover(gid, steam=False):
+def update_cover(gid):
     game = next((g for g in library() if g['id'] == gid), None)
     if not game:
         raise ValueError('Игра уже удалена')
     url = game.get('image', '')
-    if steam:
-        match = re.fullmatch(r'steam:(\d+)', game.get('source_id', ''))
-        if not match:
-            raise ValueError('У этой игры нет Steam App ID')
-        appid = match[1]
-        # A fresh request also picks up a changed CDN URL.
-        request = urllib.request.Request(api_url('https://store.steampowered.com/api/appdetails/', appids=appid, l='russian', cc='us'), headers={'User-Agent':'BackloGame/0.1', 'Cache-Control':'no-cache'})
-        with urllib.request.urlopen(request, timeout=15) as response:
-            entry = json.load(response).get(appid, {})
-        if not entry.get('success') or not entry.get('data', {}).get('header_image'):
-            raise ValueError('Steam не вернул обложку; сохранённая копия остаётся')
-        url = entry['data']['header_image']
     if not url:
         raise ValueError('У игры нет обложки')
     local = archive_cover(url)
@@ -728,11 +802,32 @@ def save_game(data, gid=None, db=None):
     record = validate(data, allowed_statuses=[x[0] for x in db.execute('SELECT name FROM categories')] if db is not None else None)
     # Download before opening a write transaction; ordinary edits reuse the archive.
     previous_image = next((g for g in library() if g['id'] == gid), {}) if gid is not None else {}
-    if record.get('status') == 'Пройдено' and not record.get('completed_at') and previous_image.get('status') != 'Пройдено' and not data.get('sync_status'):
-        record['completed_at'] = previous_image.get('completed_at') or datetime.now().date().isoformat()
+    for cover in record.get('custom_covers',{}).values():
+        if not cover['local']:
+            try:cover['local']=archive_cover(cover['url'])
+            except (OSError,ValueError):pass
+    history = playthroughs(previous_image or record)
+    platform = record.get('platform') or previous_image.get('platform') or 'Пока неизвестно'
+    if 'playthroughs' in record:
+        history = record['playthroughs']
+    elif 'completion_dates' in record:
+        remaining=list(history);history=[]
+        for date in record['completion_dates']:
+            old=next((row for row in remaining if row['date']==date),None)
+            history.append(old or {'date':date,'platform':platform})
+            if old:remaining.remove(old)
+    elif record.get('completed_at') and (record['completed_at'] not in completion_dates(previous_image or record) or previous_image and record.get('status') == 'Пройдено' and previous_image.get('status') != 'Пройдено'):
+        history.append({'date':record['completed_at'],'platform':platform})
+    elif not record.get('completed_at') and record.get('status') == 'Пройдено' and previous_image.get('status') != 'Пройдено' and not data.get('sync_status'):
+        history.append({'date':datetime.now().date().isoformat(),'platform':platform})
+    record['playthroughs'] = sorted(history,key=lambda row:row['date'])
+    record['completion_dates'] = [row['date'] for row in record['playthroughs']]
+    record['completed_at'] = max(record['completion_dates'], default='')
     image = record.get('image', previous_image.get('image', ''))
     old_local = previous_image.get('image_local', '')
     archived = old_local if image == previous_image.get('image') and old_local and (DATA / old_local.lstrip('/')).is_file() else ''
+    if record.get('image_local') and (record['image_local']!=old_local or image==previous_image.get('image')) and (DATA / record['image_local'].lstrip('/')).is_file():
+        archived = record['image_local']
     if gid is None:
         archived = record.get('image_local', '')
     if image and not archived and (gid is None or image != previous_image.get('image')):
@@ -750,8 +845,13 @@ def save_game(data, gid=None, db=None):
             if not row:
                 raise ValueError('Игра уже удалена')
             previous = json.loads(row[0])
+            # The editor sends the complete card. Keep unchanged imported source
+            # records verbatim; validation still filters newly supplied records.
+            if 'hltb_entries' in data and data['hltb_entries'] == previous.get('hltb_entries'):
+                record['hltb_entries'] = previous['hltb_entries']
             record = dict(previous, **record)
-            if record.get('thumbnail_crop') and record['thumbnail_crop']['image'] != record.get('image'):
+            artwork_urls={record.get('image'),*(cover.get('url') for cover in record.get('custom_covers',{}).values())}
+            if record.get('thumbnail_crop') and record['thumbnail_crop']['image'] not in artwork_urls:
                 record['thumbnail_crop'] = None
             record['added_at'] = previous['added_at']
             db.execute('UPDATE games SET source_id=?,payload=? WHERE id=?', (record.get('source_id') or None, json.dumps(record, ensure_ascii=False), gid))
@@ -800,7 +900,9 @@ def create_backup(automatic=False):
             with zipfile.ZipFile(pending, 'w', zipfile.ZIP_DEFLATED) as archive:
                 archive.write(snapshot, 'library.sqlite3')
                 with closing(sqlite3.connect(snapshot)) as db:
-                    images = {json.loads(row[0]).get('image_local', '') for row in db.execute('SELECT payload FROM games')}
+                    games = [json.loads(row[0]) for row in db.execute('SELECT payload FROM games')]
+                    cards=[card for game in games for card in [game,*game.get('merge_archive',[])]]
+                    images = {image for card in cards for image in [card.get('image_local') or '',*(row.get('local') or '' for row in card.get('custom_covers',{}).values())]}
                 for image in sorted(images):
                     if re.fullmatch(r'/covers/[a-f0-9]{64}\.(?:png|jpg|gif|webp)', image) and (DATA / image.lstrip('/')).is_file():
                         archive.write(DATA / image.lstrip('/'), image.lstrip('/'))
@@ -847,6 +949,9 @@ def restore_backup(raw):
                     validate(game,allowed_statuses=categories)
                     image=game.get('image_local','')
                     if image and image.lstrip('/') not in names: raise ValueError('В копии отсутствует обложка')
+                    for card in [game,*game.get('merge_archive',[])]:
+                        for cover in card.get('custom_covers',{}).values():
+                            if cover.get('local') and cover['local'].lstrip('/') not in names:raise ValueError('В копии отсутствует обложка')
                 validate_settings({k:json.loads(v) for k,v in rows['settings'] if k in DEFAULT_SETTINGS},allowed_categories=categories)
             covers={n:archive.read(n) for n in names if n.startswith('covers/')}
             if any(hashlib.sha256(content).hexdigest()!=Path(name).stem for name,content in covers.items()):
@@ -864,6 +969,32 @@ def restore_backup(raw):
     except (zipfile.BadZipFile, sqlite3.DatabaseError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError('Копия повреждена или имеет неизвестный формат') from exc
     return {'ok':True}
+
+def cleanup_unused_covers():
+    """Retain active/archived artwork and covers needed by pending undo."""
+    with MUTATION_LOCK:
+        now=time.monotonic()
+        for key,(expires,_) in list(TRASH.items()):
+            if expires<=now:TRASH.pop(key,None)
+        retained=set()
+        def collect(card):
+            retained.add(card.get('image_local',''))
+            retained.update(row.get('local','') for row in card.get('custom_covers',{}).values())
+            for archived in card.get('merge_archive',[]):collect(archived)
+        for card in library():collect(card)
+        for _,row in TRASH.values():collect(json.loads(row[2]))
+        import game_merge
+        for key,entry in list(game_merge.UNDO.items()):
+            if entry[0]<=now:game_merge.UNDO.pop(key,None)
+            elif entry[4]==str(DB):
+                for row in entry[1]:collect(json.loads(row[2]))
+        removed=0
+        for path in (DATA/'covers').glob('*'):
+            if re.fullmatch(r'[a-f0-9]{64}\.(?:png|jpg|gif|webp)',path.name) and '/covers/'+path.name not in retained:
+                try:path.unlink();removed+=1
+                except OSError:pass
+        return removed
+
 
 def delete_game(gid):
     now=time.monotonic()
@@ -892,7 +1023,7 @@ def bulk_update(data):
     ids=data.get('ids')
     patch=data.get('patch')
     if not isinstance(ids,list) or not ids or len(ids)>20000 or any(type(x)!=int for x in ids): raise ValueError('Выбери игры')
-    if not isinstance(patch,dict) or not patch or set(patch)-{'status','platform','favorite','completed_at'}: raise ValueError('Некорректные изменения')
+    if not isinstance(patch,dict) or not patch or set(patch)-{'status','platform','favorite','completed_at','completion_dates'}: raise ValueError('Некорректные изменения')
     with connection() as db:
         for gid in set(ids):
             row=db.execute('SELECT payload FROM games WHERE id=?',(gid,)).fetchone()
@@ -922,7 +1053,8 @@ class Handler(BaseHTTPRequestHandler):
         args = urllib.parse.parse_qs(parts.query)
         try:
             if parts.path == '/api/library':
-                return self.reply({'games': library(), 'platforms': platform_names(), 'categories': category_names(), 'settings': settings(), 'token': TOKEN, 'app': 'backlogame', 'data_directory': str(DATA.resolve())})
+                import steamgriddb
+                return self.reply({'games': library(), 'platforms': platform_names(), 'categories': category_names(), 'settings': settings(), 'steamgriddb_configured':steamgriddb.configured(sys.modules[__name__]), 'token': TOKEN, 'app': 'backlogame', 'data_directory': str(DATA.resolve())})
             if parts.path == '/api/library-sync/job':
                 if self.headers.get('X-Library-Token') != TOKEN:
                     return self.reply({'error':'Обновите страницу приложения'},403)
@@ -944,7 +1076,8 @@ class Handler(BaseHTTPRequestHandler):
             if parts.path == '/api/search':
                 return self.reply({'items': search_games(args.get('q', [''])[0], args.get('provider', ['steam'])[0], args.get('include_extras', ['0'])[0] == '1')})
             if parts.path == '/api/details':
-                return self.reply(details(args.get('source', [''])[0]))
+                from catalog_tools import enriched_details
+                return self.reply(enriched_details(sys.modules[__name__],args.get('source', [''])[0]))
             if parts.path == '/api/export':
                 return self.reply({'version': 1, 'games': library(), 'platforms': platform_names(), 'categories': category_names(), 'settings': settings()})
             if re.fullmatch(r'/covers/[a-f0-9]{64}\.(?:png|jpg|gif|webp)', parts.path):
@@ -962,6 +1095,10 @@ class Handler(BaseHTTPRequestHandler):
             files = {'/library-features.js':'library-features.js','/rutracker-icon.png':'rutracker-icon.png','/i18n.js':'i18n.js','/desktop.js':'desktop.js','/app-icon.png':'app-icon.png','/app-icon.ico':'app-icon.ico','/favicon.ico':'app-icon.ico','/': 'index.html', '/app.js': 'app.js', '/enhancements.js': 'enhancements.js', '/thumbnail.js': 'thumbnail.js', '/style.css': 'style.css'}
             files['/themes.js'] = 'themes.js'
             files['/updates.js'] = 'updates.js'
+            files['/statistics.js'] = 'statistics.js'
+            files['/merge-games.js'] = 'merge-games.js'
+            files['/catalog-tools.js'] = 'catalog-tools.js'
+            files['/steamgriddb.js'] = 'steamgriddb.js'
             for theme in ('teal','red','pink','green','yellow','blue','purple','mono'):
                 files['/themes/icon-'+theme+'.svg'] = 'themes/icon-'+theme+'.svg'
             if parts.path not in files:
@@ -1021,11 +1158,26 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/api/desktop-smoke' and getattr(self.server,'desktop_smoke',None):
                 self.server.desktop_smoke(data)
                 return self.reply({'ok':True})
+            if self.path in ('/api/merge-preview','/api/merge','/api/merge-undo'):
+                import game_merge
+                if self.path=='/api/merge-preview':return self.reply(game_merge.preview(self.server.library_sync.store,data))
+                if self.path=='/api/merge':return self.reply(game_merge.apply(self.server.library_sync.store,data))
+                return self.reply(game_merge.undo(self.server.library_sync.store,data))
+            if self.path in ('/api/catalog/apply','/api/catalog/automatic'):
+                import catalog_tools
+                callback=catalog_tools.apply if self.path.endswith('/apply') else catalog_tools.automatic
+                return self.reply(callback(self.server.library_sync.store,data))
+            if self.path.startswith('/api/steamgriddb/'):
+                import steamgriddb
+                actions={'status':lambda store,data:{'configured':steamgriddb.configured(store)},'key':steamgriddb.set_key,'search':steamgriddb.search,'grids':steamgriddb.grids,'apply':steamgriddb.apply,'reset':steamgriddb.reset}
+                callback=actions.get(self.path.rsplit('/',1)[1])
+                if not callback:raise ValueError('Unknown SteamGridDB action')
+                return self.reply(callback(self.server.library_sync.store,data))
             if self.path == '/api/backup-create':
                 return self.reply({'name':create_backup()})
             if self.path == '/api/backup-restore':
                 return self.reply(restore_backup(backup_path(data.get('name')).read_bytes()))
-            if self.path in ('/api/save','/api/bulk','/api/delete','/api/undo-delete','/api/reorder','/api/settings','/api/platforms','/api/categories','/api/import','/api/covers/cache','/api/covers/refresh'):
+            if self.path in ('/api/save','/api/bulk','/api/delete','/api/undo-delete','/api/reorder','/api/settings','/api/platforms','/api/categories','/api/import','/api/covers/cache'):
                 create_backup(automatic=True)
             if self.path == '/api/bulk':
                 return self.reply(bulk_update(data))
@@ -1033,8 +1185,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(undo_delete(data.get('undo')))
             if self.path == '/api/save':
                 return self.reply(save_game(data['game'], data.get('id')))
-            if self.path in ('/api/covers/cache', '/api/covers/refresh'):
-                return self.reply(update_cover(data['id'], steam=self.path.endswith('/refresh')))
+            if self.path == '/api/covers/cache':
+                return self.reply(update_cover(data['id']))
             if self.path == '/api/reorder':
                 reorder_game(data['id'], data['target'], data.get('after', False))
                 return self.reply({'ok': True})
@@ -1092,6 +1244,11 @@ class Handler(BaseHTTPRequestHandler):
 
 class LocalServer(ThreadingHTTPServer):
     allow_reuse_address = False
+
+    def service_actions(self):
+        if time.monotonic()>=getattr(self,'next_cover_cleanup',0):
+            cleanup_unused_covers()
+            self.next_cover_cleanup=time.monotonic()+60
 
     def __init__(self, *args, **kwargs):
         from library_sync import Manager

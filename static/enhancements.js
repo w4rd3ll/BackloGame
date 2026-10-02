@@ -35,7 +35,7 @@ render=function(){
     checkbox.onchange=()=>{checkbox.checked?markedGames.add(id):markedGames.delete(id);row.classList.toggle('batchSelected',checkbox.checked);updateBatchBar();};
     const star=document.createElement('button');star.type='button';star.className='gameStar';star.textContent=game.favorite?'★':'☆';star.title=game.favorite?t("Убрать из избранного"):t("Добавить в избранное");star.setAttribute('aria-label',star.title+': '+game.title);star.setAttribute('aria-pressed',String(!!game.favorite));star.draggable=false;star.onclick=()=>favoriteAction(game);
     row.prepend(checkbox);
-    if(viewMode==='compact')row.querySelector('.compactTitle').before(star);else{row.querySelector('h3').prepend(star);}
+    if(viewMode==='compact')row.querySelector('.compactTitle').before(star);else{const heading=row.querySelector('h3');heading.title=game.title;heading.prepend(star);}
     row.classList.toggle('batchSelected',markedGames.has(id));
     row.onkeydown=event=>{if(event.target!==row)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();selectGame(id);}};
   });
@@ -62,14 +62,13 @@ const quickMenu=document.createElement('div');quickMenu.id='quickMenu';quickMenu
 document.addEventListener('contextmenu',event=>{
   const row=event.target.closest('.game');if(!row)return;
   event.preventDefault();hideCoverMenu();const game=games.find(g=>g.id===Number(row.dataset.id));
-  quickMenu.innerHTML=`<button id="quickFavorite">${game.favorite?t("☆ Убрать из избранного"):t("★ Добавить в избранное")}</button><label>${t("Статус")}<select id="quickStatus">${statuses.map(s=>`<option value="${e(s)}" ${s===game.status?'selected':''}>${e(displayValue(s))}</option>`).join('')}</select></label><label>${t("Платформа")}<select id="quickPlatform">${availablePlatforms().map(s=>`<option value="${e(s)}" ${s===(game.platform||'Пока неизвестно')?'selected':''}>${e(displayValue(s))}</option>`).join('')}</select></label>${game.image?`<button id="quickCrop">${t("Выбрать миниатюру")}</button>`:''}${/^steam:\d+$/.test(game.source_id||'')?`<button id="quickCover">${t("Обновить обложку Steam")}</button>`:''}`;
+  quickMenu.innerHTML=`<button id="quickFavorite">${game.favorite?t("☆ Убрать из избранного"):t("★ Добавить в избранное")}</button><label>${t("Статус")}<select id="quickStatus">${statuses.map(s=>`<option value="${e(s)}" ${s===game.status?'selected':''}>${e(displayValue(s))}</option>`).join('')}</select></label><label>${t("Платформа")}<select id="quickPlatform">${availablePlatforms().map(s=>`<option value="${e(s)}" ${s===(game.platform||'Пока неизвестно')?'selected':''}>${e(displayValue(s))}</option>`).join('')}</select></label>${cropArtwork(game).src?`<button id="quickCrop">${t("Выбрать миниатюру")}</button>`:''}`;
   quickMenu.hidden=false;quickMenu.style.left=Math.max(8,Math.min(event.clientX,innerWidth-quickMenu.offsetWidth-8))+'px';quickMenu.style.top=Math.max(8,Math.min(event.clientY,innerHeight-quickMenu.offsetHeight-8))+'px';
   const close=()=>quickMenu.hidden=true;
   $('quickFavorite').onclick=()=>{close();favoriteAction(game);};
   $('quickStatus').onchange=()=>{const status=$('quickStatus').value;close();quickUpdate([game.id],{status});};
   $('quickPlatform').onchange=()=>{const platform=$('quickPlatform').value;close();quickUpdate([game.id],{platform});};
   if($('quickCrop'))$('quickCrop').onclick=()=>{close();openCrop(game);};
-  if($('quickCover'))$('quickCover').onclick=()=>{close();refreshOneCover(game);};
 });
 document.addEventListener('click',event=>{if(!event.target.closest('#quickMenu'))quickMenu.hidden=true;});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')quickMenu.hidden=true;});

@@ -19,19 +19,43 @@ renderInspector=function(){
   inspectorBeforeDates();
   const form=$('detailForm'),g=games.find(x=>x.id===selectedId);if(!form||!g)return;
   const status=form.elements.namedItem('status');
-  const label=document.createElement('label');label.innerHTML=`${t('Дата прохождения')}<input name="completed_at" type="date" value="${e(g.completed_at||todayDate())}">`;
-  status.closest('label').after(label);
-  const input=label.querySelector('input');
-  const update=()=>{label.hidden=status.value!=='Пройдено';input.disabled=label.hidden;input.required=!label.hidden;if(!label.hidden&&!input.value)input.value=todayDate();};
-  status.addEventListener('change',()=>{if(status.value==='Пройдено'&&g.status!=='Пройдено')input.value=todayDate();update();});update();
+  let dates=(g.playthroughs||[]).map(row=>({...row})),pendingIndex=-1;
+  const section=document.createElement('section');section.className='completionHistory';
+  status.closest('.formGrid').after(section);
+  function drawDates(){
+    section.innerHTML=`<h3>${t('История прохождений')}</h3><div class="completionChips">${dates.map((row,i)=>`<span class="completionChip"><time datetime="${e(row.date)}">${completedText(row.date)}</time><input class="historyPlatform" list="platformOptions" data-history-platform="${i}" value="${e(row.platform)}" aria-label="${t('Платформа прохождения')} ${completedText(row.date)}" maxlength="140"><button type="button" data-remove-date="${i}" aria-label="${t('Удалить дату')} ${completedText(row.date)}">×</button></span>`).join('')||`<span class="hint">${t('Дат прохождения пока нет')}</span>`}</div><button type="button" class="text" id="addCompletion">＋ ${t('Добавить прохождение')}</button>`;
+    section.querySelectorAll('[data-history-platform]').forEach(input=>input.oninput=()=>{dates[Number(input.dataset.historyPlatform)].platform=input.value.trim()||'Пока неизвестно';dirty=true;});
+    section.querySelectorAll('[data-remove-date]').forEach(button=>button.onclick=()=>{const index=Number(button.dataset.removeDate);dates.splice(index,1);if(index===pendingIndex)pendingIndex=-1;else if(index<pendingIndex)pendingIndex--;dirty=true;drawDates();});
+    $('addCompletion').onclick=async()=>{const row=await choosePlaythrough(form.elements.namedItem('platform').value);if(row){dates.push(row);dirty=true;drawDates();}};
+  }
+  drawDates();
+  status.addEventListener('change',async()=>{
+    const previous=status.dataset.previous||g.status;status.dataset.previous=status.value;
+    if(status.value==='Пройдено'&&previous!=='Пройдено'){
+      const date=await choosePlaythrough(form.elements.namedItem('platform').value);
+      if(!date){status.value=previous;status.dataset.previous=previous;return;}
+      if(pendingIndex>=0)dates.splice(pendingIndex,1);pendingIndex=dates.length;dates.push(date);dirty=true;drawDates();
+    }else if(pendingIndex>=0){dates.splice(pendingIndex,1);pendingIndex=-1;drawDates();}
+  });
+  form.onsubmit=async event=>{
+    event.preventDefault();if(completeDialog.open)return;
+    const values=Object.fromEntries(new FormData(form));
+    const history=dates;
+    await busy(event.submitter,async()=>{await api('/api/save',{id:g.id,game:{...g,...values,playthroughs:history,platform:values.platform||'Пока неизвестно'}});dirty=false;await reload();renderInspector();toast(t('Изменения сохранены'));});
+  };
+
 };
 const completeDialog=document.createElement('dialog');completeDialog.className='dateDialog';document.body.append(completeDialog);
-function chooseCompletionDate(initial){return new Promise(resolve=>{
-  completeDialog.innerHTML=`<form method="dialog"><h2>${t('Дата прохождения')}</h2><input id="completionChoice" type="date" required value="${e(initial||todayDate())}"><div class="detailActions"><button type="button" id="cancelCompletion">${t('Отмена')}</button><button class="primary">${t('Сохранить')}</button></div></form>`;
+async function choosePlaythrough(platform){
+  const date=await chooseCompletionDate(null,platform||'Пока неизвестно');
+  return date;
+}
+function chooseCompletionDate(initial,platform){return new Promise(resolve=>{
+  completeDialog.innerHTML=`<form method="dialog"><h2>${t('Дата прохождения')}</h2><input id="completionChoice" type="date" required value="${e(initial||todayDate())}">${platform!==undefined?`<label>${t('Платформа прохождения')}<input id="completionPlatform" list="platformOptions" value="${e(platform)}" maxlength="140" required></label>`:''}<div class="detailActions"><button type="button" id="cancelCompletion">${t('Отмена')}</button><button class="primary">${t('Сохранить')}</button></div></form>`;
   let result=null;
   completeDialog.onclose=()=>resolve(result);
   $('cancelCompletion').onclick=()=>completeDialog.close();
-  completeDialog.querySelector('form').onsubmit=event=>{event.preventDefault();result=$('completionChoice').value;completeDialog.close();};completeDialog.showModal();
+  completeDialog.querySelector('form').onsubmit=event=>{event.preventDefault();result=platform===undefined?$('completionChoice').value:{date:$('completionChoice').value,platform:$('completionPlatform').value.trim()||'Пока неизвестно'};completeDialog.close();};completeDialog.showModal();
 });}
 const updateBeforeDates=quickUpdate;
 quickUpdate=async function(ids,patch){

@@ -109,6 +109,8 @@ def main():
                      if r.get('date_complete') and not str(r['date_complete']).startswith('0000')]
             if dates:
                 game['completed_at'] = max(dates)
+                game['playthroughs'] = server.merge_playthroughs(server.playthroughs(old or {}), server.playthroughs({'hltb_entries':entries,'platform':converted['platform']}))
+                game = server.with_completion_dates(game)
             if not game.get('release_date'):
                 game['release_date'] = release(latest.get('release_world'))
             payload = json.dumps(game, ensure_ascii=False)

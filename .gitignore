@@ -12,3 +12,4 @@ tests/output/
 .env*
 .wrangler/
 node_modules/
+.steamgriddb-key*

@@ -14,7 +14,7 @@ Demonstration library; progress is illustrative. Downloads start empty.
 
 ## Get started
 
-1. Download `BackloGame-0.2.0-windows-x64-portable.zip` from Releases.
+1. Download `BackloGame-0.3.0-windows-x64-portable.zip` from Releases.
 2. If Windows blocks startup, open the ZIP properties, select **Unblock**, then extract again.
    Extract the entire archive to a writable local folder.
 3. Run `BackloGame.exe`. Keep `_internal` beside it.
@@ -29,14 +29,18 @@ Russian in **Settings → General → Interface language**.
 
 - Search Steam, Wikipedia, or Metacritic, or add games manually.
 - Import public Steam libraries and HLTB profiles or CSV exports, with duplicate previews.
-- Save completion dates and separate sorting/view choices for each category.
+- Track replays and multiple completion dates, with a platform for each playthrough.
+- Explore interactive statistics with bars and colorful pie charts.
+- Keep separate sorting/view choices for each category.
 - Choose from eight color themes.
 - Check and install portable updates from Settings, keeping one previous app version.
 - Track progress and favorites; create your own categories and platforms.
 - Use cards, a list, or a compact one-line list with small covers.
 - Filter by platform, genre, series, tags, and dates; sort or drag into manual order.
 - Add notes, tags, priorities, and several series separated by `;`.
-- Save covers locally, select a thumbnail crop, and refresh Steam covers.
+- Choose and save portrait and landscape covers from SteamGridDB and other catalogs.
+- Select a manual thumbnail crop and fill missing series from Wikidata.
+- Merge duplicate cards with a preview, retained history, and undo.
 - Edit multiple games together and collapse the side panels.
 - Export and restore full backups. At most **10** ZIP backups are retained.
 
@@ -84,6 +88,8 @@ Tests (run from this source folder):
 .venv/Scripts/python.exe -m unittest test_library
 node --test tests/test_cloudflare_worker.mjs
 node test_filters.cjs
+node tests/test_artwork.cjs
+node tests/test_statistics.cjs
 node --expose-internals tests/check-localization.cjs
 ```
 
@@ -104,3 +110,10 @@ The included EXE, build spec, and CMD launchers target Windows only.
 See [component notices](docs/THIRD_PARTY.md) and [included licenses](docs/licenses).
 Game artwork and descriptions remain the property of their respective owners.
 The download contains no personal game library or game covers.
+## SteamGridDB covers
+
+Save your SteamGridDB API key in Settings → Sources; the Instructions panel links to the key preferences page. Right-click a game → Choose a catalog cover → SteamGridDB to browse portrait and landscape artwork independently. Portrait covers appear in cards and details; landscape covers appear in both list views. Images are saved locally and backed up. Resetting one format preserves the other, and metadata updates preserve chosen artwork.
+
+The key lives separately in `.steamgriddb-key` in your personal data folder. JSON exports and ZIP backups exclude it. Do not publish your personal data folder.
+
+Deleted-game covers are retained during the 10-minute undo period. Unused files are then cleaned automatically; shared images and merge history are retained. Restarting ends undo availability, so cleanup runs immediately. Existing backups remain intact, with the same limit of 10.

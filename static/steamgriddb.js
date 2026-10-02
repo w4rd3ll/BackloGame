@@ -1,0 +1,86 @@
+'use strict';
+const gridDialog=document.createElement('dialog');gridDialog.className='gridDialog';document.body.append(gridDialog);
+let gridSession=0;
+async function openSteamGrid(game,initialOrientation='portrait'){
+  if(dirty){toast(t('Сначала сохрани изменения в карточке'),true);return;}
+  if(catalogBatchRunning||coversUpdating){toast(t('Дождись обновления каталога'),true);return;}
+  const session=++gridSession;
+  let orientation=initialOrientation,target=null,page=0,revision=0,saving=false,assets=[],chosen=null;
+  gridDialog.innerHTML=`<div class="dialogHead"><div><h2>${t('Выбрать обложку из каталога')}</h2><p class="hint">${e(game.title)}</p></div><button id="gridClose" aria-label="${t('Закрыть')}">✕</button></div><form id="gridSearch"><input id="gridQuery" value="${e(game.original_title||game.title)}" aria-label="${t('Название игры')}" required maxlength="150"><button>${t('Найти')}</button></form><div id="gridMatches" class="gridMatches"></div><div class="gridTabs"><button data-grid-tab="portrait">${t('Вертикальная')}</button><button data-grid-tab="landscape">${t('Горизонтальная')}</button><button id="gridReset" class="text">${t('Вернуть исходную обложку')}</button></div><p id="gridStatus" class="hint" role="status"></p><div class="gridLayout"><div><div id="gridAssets" class="gridAssets"></div><button id="gridMore" hidden>${t('Показать ещё')}</button></div><aside id="gridPreview"><p class="hint">${t('Выбери обложку для предпросмотра')}</p></aside></div><p class="hint">${t('Вертикальная обложка — карточки и описание. Горизонтальная — список. Обе сохраняются на компьютере.')}</p>`;
+  const close=()=>{if(!saving){revision++;gridDialog.close();}};
+  const provider=document.createElement('select');provider.id='gridProvider';provider.setAttribute('aria-label',t('Источник'));
+  provider.innerHTML='<option value="steamgriddb">SteamGridDB</option><option value="metacritic">Metacritic</option><option value="steam">Steam</option><option value="wikipedia">Wikipedia / Wikidata</option>';
+  $('gridSearch').insertBefore(provider,$('gridSearch').querySelector('button'));
+  provider.onchange=()=>{if(!saving){const next=provider.value;close();openCatalogUpdate(game,'cover',next,orientation);}};
+  $('gridClose').onclick=close;gridDialog.oncancel=event=>{if(saving)event.preventDefault();else revision++;};
+  gridDialog.onclick=event=>{if(event.target===gridDialog){const r=gridDialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)close();}};
+  function tabs(){
+    gridDialog.querySelectorAll('[data-grid-tab]').forEach(button=>{button.classList.toggle('primary',button.dataset.gridTab===orientation);button.setAttribute('aria-pressed',String(button.dataset.gridTab===orientation));});
+    $('gridAssets').dataset.orientation=orientation;
+    $('gridReset').disabled=!games.find(g=>g.id===game.id)?.custom_covers?.[orientation];
+  }
+  function lock(value){saving=value;if(value)revision++;gridDialog.querySelectorAll('button,input').forEach(x=>x.disabled=value);if(!value)tabs();}
+  function draw(){
+    $('gridAssets').innerHTML=assets.map((row,i)=>`<button class="gridAsset ${chosen===row?'selected':''}" data-grid-asset="${i}" aria-label="${e(row.author+' · '+row.width+' × '+row.height)}"><img src="${e(row.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"><small>${row.width} × ${row.height}</small></button>`).join('');
+    $('gridAssets').querySelectorAll('[data-grid-asset]').forEach(button=>button.onclick=()=>{
+      chosen=assets[Number(button.dataset.gridAsset)];draw();
+      $('gridPreview').innerHTML=`<img src="${e(chosen.url)}" alt="${t('Предпросмотр')}" referrerpolicy="no-referrer"><p>${e(chosen.author)} · ${chosen.width} × ${chosen.height}</p><button id="gridUse" class="primary">${t('Использовать обложку')}</button>`;
+      $('gridUse').onclick=async()=>{
+        lock(true);
+        try{await api('/api/steamgriddb/apply',{id:game.id,gallery:chosen.gallery,asset:chosen.id});await reload();renderInspector();$('gridStatus').textContent=t('Обложка сохранена');toast(t('Обложка сохранена'));}
+        catch(err){$('gridStatus').textContent=t(err.message);}
+        finally{lock(false);}
+      };
+    });
+  }
+  async function load(append=false){
+    if(!target)return;
+    const request=++revision;
+    if(!append){page=0;assets=[];chosen=null;draw();$('gridPreview').innerHTML=`<p class="hint">${t('Выбери обложку для предпросмотра')}</p>`;}
+    $('gridStatus').textContent=t('Загружаем обложки…');$('gridMore').hidden=true;tabs();
+    try{
+      const result=await api('/api/steamgriddb/grids',{...target,orientation,page});if(request!==revision||session!==gridSession||!gridDialog.open)return;
+      assets.push(...result.items.map(row=>({...row,gallery:result.gallery})));draw();$('gridMore').hidden=!result.more;
+      $('gridStatus').textContent=assets.length?`${t('Обложки:')} ${assets.length}`:t('Обложки не найдены. Попробуй поиск по названию.');
+    }catch(err){if(request===revision&&session===gridSession)$('gridStatus').textContent=t(err.message);}
+  }
+  async function search(){
+    const request=++revision;target=null;assets=[];chosen=null;draw();$('gridMore').hidden=true;$('gridPreview').textContent='';$('gridMatches').textContent='';$('gridStatus').textContent=t('Ищем в каталоге…');
+    try{
+      const result=await api('/api/steamgriddb/search',{query:$('gridQuery').value});if(request!==revision||session!==gridSession||!gridDialog.open)return;
+      $('gridMatches').innerHTML=result.items.map((row,i)=>`<button data-grid-match="${i}">${e(row.title)}</button>`).join('');
+      $('gridStatus').textContent=result.items.length?t('Выбери соответствующую игру'):t('Ничего не найдено');
+      $('gridMatches').querySelectorAll('[data-grid-match]').forEach(button=>button.onclick=()=>{target={kind:'game',game:result.items[Number(button.dataset.gridMatch)].id};$('gridMatches').querySelectorAll('button').forEach(b=>b.classList.toggle('primary',b===button));load();});
+    }catch(err){if(request===revision&&session===gridSession)$('gridStatus').textContent=t(err.message);}
+  }
+  $('gridSearch').onsubmit=event=>{event.preventDefault();if(!saving)search();};
+  gridDialog.querySelectorAll('[data-grid-tab]').forEach(button=>button.onclick=()=>{orientation=button.dataset.gridTab;tabs();load();});
+  $('gridMore').onclick=()=>{page++;load(true);};
+  $('gridReset').onclick=async()=>{
+    lock(true);
+    try{await api('/api/steamgriddb/reset',{id:game.id,orientation});await reload();renderInspector();$('gridStatus').textContent=t('Исходная обложка восстановлена');}
+    catch(err){$('gridStatus').textContent=t(err.message);}
+    finally{lock(false);}
+  };
+  tabs();gridDialog.showModal();
+  const steam=steamSource(game);
+  if(steam){target={kind:'steam',game:Number(steam.split(':')[1])};await load();}else await search();
+}
+document.addEventListener('contextmenu',event=>{
+  const row=event.target.closest('.game'),image=event.target.closest('[data-cover-id]');
+  const game=games.find(g=>g.id===Number(row?.dataset.id||image?.dataset.coverId));if(!game)return;
+  event.preventDefault();const menu=row?quickMenu:$('coverMenu');menu.hidden=false;
+  if(!row){menuGame=game;$('chooseThumbnail').hidden=!cropArtwork(game).src;$('resetThumbnail').hidden=!game.thumbnail_crop;}
+  menu.style.top=Math.max(8,Math.min(event.clientY,innerHeight-menu.offsetHeight-8))+'px';
+  menu.style.left=Math.max(8,Math.min(event.clientX,innerWidth-menu.offsetWidth-8))+'px';
+});
+const settingsBeforeGrid=renderSettings;
+renderSettings=function(){
+  settingsBeforeGrid();const panel=document.createElement('section');panel.className='gridSettings';
+  panel.innerHTML=`<h3>SteamGridDB</h3><p id="gridKeyStatus" class="hint"></p><form id="gridKeyForm"><input id="gridKey" type="password" autocomplete="new-password" placeholder="API key" aria-label="SteamGridDB API key" minlength="16" maxlength="128" required><button>${t('Сохранить ключ')}</button><button id="gridKeyRemove" type="button">${t('Удалить ключ')}</button></form><details><summary>${t('Инструкция')}</summary><ol><li>${t('Войди на SteamGridDB через свой аккаунт Steam.')}</li><li><a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" rel="noopener noreferrer">${t('Открой Preferences → API и создай API-ключ.')}</a></li><li>${t('Вставь ключ в поле выше и нажми «Сохранить ключ».')}</li><li>${t('ПКМ по игре → Выбрать обложку из каталога → SteamGridDB. Выбери отдельно вертикальную и горизонтальную обложку.')}</li></ol><p class="hint">${t('Ключ хранится только в личной папке данных. Он не включается в экспорт библиотеки и резервные копии.')}</p></details>`;
+  $('steamSourcePanel').append(panel);
+  function status(result){if(panel.isConnected){panel.querySelector('#gridKeyStatus').textContent=t(result.configured?'Ключ сохранён':'Ключ не задан');panel.querySelector('#gridKeyRemove').disabled=!result.configured;}}
+  api('/api/steamgriddb/status',{}).then(status).catch(err=>{if(panel.isConnected)panel.querySelector('#gridKeyStatus').textContent=t(err.message);});
+  $('gridKeyForm').onsubmit=event=>{event.preventDefault();busy(event.submitter,async()=>{const result=await api('/api/steamgriddb/key',{key:$('gridKey').value});$('gridKey').value='';status(result);});};
+  $('gridKeyRemove').onclick=event=>busy(event.currentTarget,async()=>{status(await api('/api/steamgriddb/key',{key:''}));$('gridKey').value='';});
+};

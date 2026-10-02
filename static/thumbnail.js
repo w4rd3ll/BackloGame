@@ -7,10 +7,9 @@ document.addEventListener('contextmenu',event=>{
   const image=event.target.closest('[data-cover-id]');
   if(!image)return;
   const game=games.find(g=>g.id===Number(image.dataset.coverId));
-  if(!game?.image)return;
+  if(!game||!cropArtwork(game).src)return;
   event.preventDefault();menuGame=game;
   $('resetThumbnail').hidden=!game.thumbnail_crop;
-  $('refreshCover').hidden=!/^steam:\d+$/.test(game.source_id||'');
   const menu=$('coverMenu');menu.hidden=false;
   menu.style.left=Math.max(0,Math.min(event.clientX,window.innerWidth-menu.offsetWidth-8))+'px';
   menu.style.top=Math.max(0,Math.min(event.clientY,window.innerHeight-menu.offsetHeight-8))+'px';
@@ -31,7 +30,7 @@ function paintCrop(){
   Object.assign(frame.style,{left:cropRect.x*100+'%',top:cropRect.y*100+'%',width:cropRect.width*100+'%',height:cropRect.height*100+'%'});
   frame.setAttribute('aria-valuenow',String(Math.round(cropRect.y*100)));
   frame.setAttribute('aria-valuetext',`${t("Область:")} ${Math.round(cropRect.x*100)}${t("% слева,")} ${Math.round(cropRect.y*100)}${t("% сверху")}`);
-  $('cropPreview').innerHTML=croppedCover(coverSource(cropGame),cropRect);
+  $('cropPreview').innerHTML=croppedCover(cropArtwork(cropGame).src,cropRect);
   wireImages($('cropPreview'));
 }
 function openCrop(game){
@@ -43,7 +42,7 @@ function openCrop(game){
     const aspect=img.naturalWidth/img.naturalHeight;
     cropBase=aspect>thumbnailRatio?{width:thumbnailRatio/aspect,height:1}:{width:1,height:aspect/thumbnailRatio};
     const previous=game.thumbnail_crop;
-    const valid=previous?.image===game.image&&Math.abs(previous.width*aspect/previous.height-thumbnailRatio)<0.01;
+    const valid=previous?.image===cropArtwork(game).image&&Math.abs(previous.width*aspect/previous.height-thumbnailRatio)<0.01;
     const zoom=valid?clampCrop(cropBase.width/previous.width,1,4):1;
     cropRect=valid?{...previous}:{width:cropBase.width,height:cropBase.height,x:(1-cropBase.width)/2,y:(1-cropBase.height)/2};
     $('cropZoom').value=String(zoom);$('cropZoom').disabled=false;cropReady=true;
@@ -51,7 +50,7 @@ function openCrop(game){
     $('cropMessage').textContent=t("Можно двигать рамку мышью или стрелками на клавиатуре.");paintCrop();
   };
   img.onerror=()=>{$('cropMessage').textContent=t("Не удалось загрузить обложку. Проверь подключение и попробуй снова.");};
-  img.removeAttribute('src');img.src=coverSource(game);$('cropDialog').showModal();
+  img.removeAttribute('src');img.src=cropArtwork(game).src;$('cropDialog').showModal();
 }
 $('cropZoom').oninput=()=>{
   if(!cropReady)return;
@@ -85,10 +84,8 @@ $('saveCrop').onclick=async()=>{
   if(!cropReady||cropSaving)return;
   cropSaving=true;$('cropZoom').disabled=true;
   await busy($('saveCrop'),async()=>{
-    const saved=await api('/api/save',{id:cropGame.id,game:{title:cropGame.title,thumbnail_crop:{x:cropRect.x,y:cropRect.y,width:cropRect.width,height:cropRect.height,image:cropGame.image}}});
+    const saved=await api('/api/save',{id:cropGame.id,game:{title:cropGame.title,thumbnail_crop:{x:cropRect.x,y:cropRect.y,width:cropRect.width,height:cropRect.height,image:cropArtwork(cropGame).image}}});
     Object.assign(cropGame,saved);render();$('cropDialog').close();cropReady=false;toast(t("Миниатюра сохранена"));
   });
   cropSaving=false;$('cropZoom').disabled=false;
 };
-
-$('refreshCover').onclick=()=>{const game=menuGame;hideCoverMenu();refreshOneCover(game);};

@@ -153,7 +153,7 @@ class LibraryTests(unittest.TestCase):
             with exc:
                 return exc.code, json.load(exc)
 
-    def test_local_covers_and_safe_refresh(self):
+    def test_local_covers_and_safe_caching(self):
         self.cover_mock.stop()
         png=b'\x89PNG\r\n\x1a\nfixture'
         image='https://example.com/cover.png'
@@ -166,15 +166,14 @@ class LibraryTests(unittest.TestCase):
             self.assertEqual(response.headers['Content-Type'],'image/png')
         crop={'x':0,'y':0,'width':1,'height':.3,'image':image}
         self.request('/api/save',{'id':game['id'],'game':{'title':'Cover','thumbnail_crop':crop}})
-        api={'380':{'success':True,'data':{'header_image':image}}}
-        with patch.object(server.urllib.request,'urlopen',side_effect=[io.BytesIO(json.dumps(api).encode()),io.BytesIO(png+b'new')]):
-            changed=server.update_cover(game['id'],steam=True)
+        with patch.object(server.urllib.request,'urlopen',return_value=io.BytesIO(png+b'new')):
+            changed=server.update_cover(game['id'])
         self.assertNotEqual(changed['image_local'],game['image_local'])
         self.assertIsNone(changed['thumbnail_crop'])
         self.assertEqual(changed['notes'],'Keep')
         self.assertTrue(changed['favorite'])
         with patch.object(server.urllib.request,'urlopen',side_effect=OSError('offline')):
-            with self.assertRaises(OSError):server.update_cover(game['id'],steam=True)
+            with self.assertRaises(OSError):server.update_cover(game['id'])
         self.assertEqual(server.library()[0]['image_local'],changed['image_local'])
         self.assertTrue((server.DATA/game['image_local'].lstrip('/')).is_file())
         clone=dict(changed, source_id='')

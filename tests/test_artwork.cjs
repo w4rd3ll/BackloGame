@@ -1,0 +1,21 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const source=fs.readFileSync('static/app.js','utf8');
+const start=source.indexOf('const coverSource=');
+const end=source.indexOf('function wireImages',start);
+const ctx=vm.createContext({viewMode:'cards',e:x=>x,t:x=>x});
+vm.runInContext(source.slice(start,end),ctx);
+const g={id:1,image:'base',image_local:'/covers/base',custom_covers:{portrait:{url:'p',local:'/covers/portrait'},landscape:{url:'l',local:'/covers/landscape'}}};
+ctx.game=g;
+assert.match(vm.runInContext('cover(game)',ctx),/\/covers\/portrait/);
+for(const mode of ['list','compact']){ctx.viewMode=mode;assert.match(vm.runInContext('cover(game)',ctx),/\/covers\/landscape/);assert.match(vm.runInContext("cover(game,'detailImage')",ctx),/\/covers\/portrait/);}
+delete g.custom_covers.landscape;
+assert.match(vm.runInContext('cover(game)',ctx),/\/covers\/base/);
+g.thumbnail_crop={image:'p',x:0,y:.2,width:1,height:.3};
+assert.match(vm.runInContext('cover(game)',ctx),/thumbnailCrop/);
+assert.match(vm.runInContext('cover(game)',ctx),/\/covers\/portrait/);
+ctx.viewMode='cards';
+assert.doesNotMatch(vm.runInContext('cover(game)',ctx),/thumbnailCrop/);
+assert.match(vm.runInContext('cover(game)',ctx),/cardArtwork/);
+ctx.viewMode='list';delete g.image;delete g.image_local;
+assert.match(vm.runInContext('cover(game)',ctx),/thumbnailCrop/);
+console.log('Portrait/card/detail and landscape/list/compact mapping and reset fallback: OK');

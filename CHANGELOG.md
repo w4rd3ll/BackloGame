@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.3.0 — 2026-10-02
+
+- Full-card editing preserves unchanged original HLTB records, including their
+  extra imported fields. Catalog metadata updates retain a thumbnail crop of an
+  independently selected cover and invalidate crops only when their image changes.
+
+- Uniform cards use a 2:3 artwork area with a blurred background for wide images
+  and compact aligned details without note placeholders. Manual horizontal
+  thumbnails work with catalog-selected covers and survive ordinary edits.
+
+- SteamGridDB gallery with independent portrait and landscape covers, local
+  image storage, reset per format and private API-key settings with instructions.
+- Unified cover selection with SteamGridDB first, followed by Metacritic, Steam
+  and Wikipedia. Removed the separate Steam cover refresh action and endpoint.
+- Unused cover cleanup after deletion undo expires; shared artwork, merge
+  snapshots and existing bounded backups are preserved.
+
+- Alternative Steam, Metacritic and Wikipedia cover/detail selection, including
+  HLTB imports. Catalog updates retain progress, notes and the original source.
+- Missing-cover repair with catalog fallback and cancellable bulk series filling
+  from explicit Wikidata relationships. Existing series are preserved.
+- Right-click actions for catalog updates and merging two selected game cards.
+
+- Explicit two-card merge preview, bounded backups and a reversible merge.
+  Notes, tags, series, source references and original card metadata are retained.
+- Playthroughs keep their own platform; planning a Steam replay preserves an
+  earlier console completion. Imports recognize merged source IDs, and platform
+  statistics count completions on their recorded platform.
+
+- Remembered bars/pie switch for distribution charts, with colorful interactive
+  donut segments, percentage legends and grouped smaller values.
+
+- Replaying category and completion history, with additive dates and removable
+  date chips. The latest remaining date drives library labels and sorting.
+- Preserve legacy and HLTB playthrough dates; repeated imports merge dates
+  without erasing local replays or multiplying already imported events.
+- Themed statistics dialog: category/platform/date filters, unique completed
+  games, dated playthroughs, yearly/monthly activity and genre/platform/release
+  distributions. Chart clicks open the corresponding games.
+
 ## 0.2.0 — 2026-10-01
 
 - GitHub update checks, optional startup notifications, verified ZIP downloads

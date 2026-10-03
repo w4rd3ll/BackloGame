@@ -79,7 +79,7 @@ async function openCatalogComparison(game){
     state.game=null;state.source='';state.error='';
     if(index===''||!item){draw();return;}
     state.source=item.source_id;state.loading=true;draw();
-    try{const fresh=await api('/api/details?source='+encodeURIComponent(item.source_id));if(active()&&revision===searchRevision&&selection===state.revision)state.game=fresh;}
+    try{const fresh=await api('/api/details?raw=1&source='+encodeURIComponent(item.source_id));if(active()&&revision===searchRevision&&selection===state.revision)state.game=fresh;}
     catch(error){if(active()&&revision===searchRevision&&selection===state.revision)state.error=error.message;}
     finally{if(active()&&revision===searchRevision&&selection===state.revision){state.loading=false;draw();}}
   }

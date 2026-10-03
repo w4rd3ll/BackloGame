@@ -28,9 +28,10 @@ const oldRender=render;
 render=function(){
   const scroll=mainPane.scrollTop;const initial=!render.didRestoreScroll;render.didRestoreScroll=true;
   oldRender();
-  for(const id of markedGames)if(!games.some(g=>g.id===id))markedGames.delete(id);
+  const gamesById=new Map(games.map(game=>[game.id,game]));
+  for(const id of markedGames)if(!gamesById.has(id))markedGames.delete(id);
   $('games').querySelectorAll('.game').forEach(row=>{
-    const id=Number(row.dataset.id),game=games.find(g=>g.id===id);
+    const id=Number(row.dataset.id),game=gamesById.get(id);
     const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='gameCheck';checkbox.checked=markedGames.has(id);checkbox.setAttribute('aria-label',t("Выбрать ")+game.title);checkbox.draggable=false;
     checkbox.onchange=()=>{checkbox.checked?markedGames.add(id):markedGames.delete(id);row.classList.toggle('batchSelected',checkbox.checked);updateBatchBar();};
     const star=document.createElement('button');star.type='button';star.className='gameStar';star.textContent=game.favorite?'★':'☆';star.title=game.favorite?t("Убрать из избранного"):t("Добавить в избранное");star.setAttribute('aria-label',star.title+': '+game.title);star.setAttribute('aria-pressed',String(!!game.favorite));star.draggable=false;star.onclick=()=>favoriteAction(game);

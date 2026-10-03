@@ -22,10 +22,26 @@ class CatalogToolsTests(unittest.TestCase):
         for item in reversed(self.patches):item.stop()
         self.work.cleanup()
 
+    def test_steam_keeps_its_description_without_wikipedia_fallback(self):
+        for description in ('Short English description', 'Короткое русское описание'):
+            payload={'400':{'success':True,'data':{'name':'Portal','about_the_game':description,'release_date':{'date':'Oct 10, 2007'},'genres':[],'platforms':{}}}}
+            with self.subTest(description=description),patch.object(server,'remote',return_value=payload),patch.object(server,'russian_description_for_title') as wiki:
+                game=server.details('steam:400')
+            wiki.assert_not_called()
+            self.assertEqual(game['description'],description)
+            self.assertEqual(game['description_url'],'https://store.steampowered.com/app/400/')
+
+    def test_comparison_apply_does_not_fill_series_from_another_catalog(self):
+        with patch.object(server,'details',return_value={'title':'Portal Steam','description':'Steam description','source_url':'https://store.steampowered.com/app/400/'}),patch('catalog_tools.find_series') as wiki:
+            result=catalog_tools.apply(server,{'id':self.game['id'],'fields':{'description':'steam:400'}})['game']
+        wiki.assert_not_called()
+        self.assertEqual(result['description'],'Steam description')
+        self.assertEqual(result['description_url'],'https://store.steampowered.com/app/400/')
+
     def test_mixed_fields_preserve_unselected_data_and_progress(self):
         server.save_game({'title':'Portal','description':'mine','series':'Manual series','genre':'Old genre','release_date':'2007-01-01'},self.game['id'])
         entries={'steam:400':{'title':'Portal Steam','genre':'Puzzle','developer':'Valve','image':'unused'},'wiki:Portal':{'title':'Portal Wiki','description':'Wiki description','description_language':'ru','source_url':'https://example.com/wiki'},'metacritic:portal':{'title':'Portal MC','release_date':'2007-10-10','release_label':'Oct 10, 2007'}}
-        with patch('catalog_tools.enriched_details',side_effect=lambda store,source:entries[source]) as details,patch.object(server,'archive_cover') as archive:
+        with patch.object(server,'details',side_effect=lambda source:entries[source]) as details,patch.object(server,'archive_cover') as archive:
             result=catalog_tools.apply(server,{'id':self.game['id'],'fields':{'description':'wiki:Portal','genre':'steam:400','developer':'steam:400','release_date':'metacritic:portal'}})['game']
             self.assertEqual(details.call_count,3);archive.assert_not_called()
         self.assertEqual(result['title'],'Portal');self.assertEqual(result['description'],'Wiki description')
@@ -36,7 +52,7 @@ class CatalogToolsTests(unittest.TestCase):
 
     def test_selected_series_and_cover_replace_only_chosen_values(self):
         server.save_game({'title':'Portal','series':'Manual','custom_covers':{'portrait':{'url':'https://example.com/old','local':self.cover},'landscape':{'url':'https://example.com/wide','local':self.cover}}},self.game['id'])
-        with patch('catalog_tools.enriched_details',return_value={'series':'Portal; Half-Life','image':'https://example.com/new'}),patch.object(server,'archive_cover',return_value=self.cover):
+        with patch.object(server,'details',return_value={'series':'Portal; Half-Life','image':'https://example.com/new'}),patch.object(server,'archive_cover',return_value=self.cover):
             result=catalog_tools.apply(server,{'id':self.game['id'],'fields':{'series':'wiki:Portal','image':'wiki:Portal'}})['game']
         self.assertEqual(result['series'],'Portal; Half-Life')
         self.assertEqual(result['custom_covers']['portrait']['url'],'https://example.com/new')
@@ -45,16 +61,16 @@ class CatalogToolsTests(unittest.TestCase):
     def test_failed_selected_source_or_cover_changes_nothing(self):
         before=server.library()
         for cover_failure in (False,True):
-            with self.subTest(cover_failure=cover_failure),patch('catalog_tools.enriched_details',side_effect=lambda store,source:({'description':'new','image':'https://example.com/new'} if cover_failure or source=='steam:400' else (_ for _ in ()).throw(OSError('offline')))),patch.object(server,'archive_cover',side_effect=OSError('cover unavailable')):
+            with self.subTest(cover_failure=cover_failure),patch.object(server,'details',side_effect=lambda source:({'description':'new','image':'https://example.com/new'} if cover_failure or source=='steam:400' else (_ for _ in ()).throw(OSError('offline')))),patch.object(server,'archive_cover',side_effect=OSError('cover unavailable')):
                 with self.assertRaises(OSError):catalog_tools.apply(server,{'id':self.game['id'],'fields':{'description':'steam:400','image':'wiki:Portal'}})
             self.assertEqual(server.library(),before)
 
     def test_invalid_or_empty_field_selection_never_fetches_catalogs(self):
         for fields in ({},{'status':'steam:400'},{'description':'hltb:123'},{'description':123}):
-            with patch('catalog_tools.enriched_details') as details,self.assertRaises(ValueError):
+            with patch.object(server,'details') as details,self.assertRaises(ValueError):
                 catalog_tools.apply(server,{'id':self.game['id'],'fields':fields})
             details.assert_not_called()
-        with patch('catalog_tools.enriched_details',return_value={}),self.assertRaises(ValueError):
+        with patch.object(server,'details',return_value={}),self.assertRaises(ValueError):
             catalog_tools.apply(server,{'id':self.game['id'],'fields':{'description':'steam:400'}})
 
     def test_metadata_update_preserves_crop_of_independent_custom_cover(self):

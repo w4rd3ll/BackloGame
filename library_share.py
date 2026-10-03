@@ -69,7 +69,7 @@ def local_cover(store, game, cache=None):
         path = (store.DATA / value.lstrip('/')).resolve()
         if not path.is_relative_to(store.DATA.resolve()) or not path.is_file():
             continue
-        if path.stat().st_size > 10_000_000:
+        if path.stat().st_size > 128 * 1024 * 1024:
             continue
         try:
             encoded = compressed_cover(path.read_bytes())

@@ -1,5 +1,6 @@
 """Local personal game library."""
 from __future__ import annotations
+import steamgriddb
 import argparse
 import html
 import json
@@ -36,6 +37,8 @@ DEFAULT_SETTINGS = {'hidden_categories': [], 'show_card_notes': True, 'default_c
 DEFAULT_SETTINGS['category_sorts'] = {}
 DEFAULT_SETTINGS['theme'] = 'teal'
 DEFAULT_SETTINGS['card_details'] = 'both'
+DEFAULT_SETTINGS['cover_max_mb'] = 64
+DEFAULT_SETTINGS['steamgriddb_filters'] = dict(steamgriddb.FILTER_DEFAULTS)
 DEFAULT_SETTINGS['auto_check_updates'] = True
 DEFAULT_SETTINGS['steam_relay_url'] = 'https://backlogame-steam.w4rdell.workers.dev'
 CACHE = {}
@@ -356,13 +359,6 @@ def details(source_id):
         en = remote(api_url('https://store.steampowered.com/api/appdetails/', appids=appid, l='english', cc='us')).get(appid, {}).get('data', {})
         game['original_title'] = en.get('name', data['name'])
         game['description_url'] = game['source_url']
-        if not is_russian(game['description']) or len(game['description']) < 700:
-            try:
-                description, url = russian_description_for_title(game['original_title'])
-                if description and (len(description) > len(game['description']) or not is_russian(game['description'])):
-                    game.update(description=description, description_url=url)
-            except (OSError, KeyError, ValueError):
-                pass
         game['description_language'] = 'ru' if is_russian(game['description']) else 'original'
         raw = en.get('release_date', {}).get('date', '')
         for fmt in ('%d %b, %Y', '%b %d, %Y', '%d %B, %Y', '%B %d, %Y'):
@@ -501,6 +497,7 @@ def platform_names():
 def settings():
     with connection() as db:
         result = dict(DEFAULT_SETTINGS, **{name: json.loads(value) for name, value in db.execute('SELECT name,value FROM settings') if name in DEFAULT_SETTINGS})
+        result['steamgriddb_filters'] = steamgriddb.validate_filters(result['steamgriddb_filters'])
         names = [x[0] for x in db.execute('SELECT name FROM categories ORDER BY position,name')]
         if result['default_category'] not in names:
             result['default_category'] = names[0]
@@ -516,6 +513,12 @@ def validate_settings(data, allowed_categories=None):
     if not isinstance(data, dict):
         raise ValueError('Некорректные настройки')
     result = {}
+    if 'cover_max_mb' in data:
+        if type(data['cover_max_mb']) is not int or data['cover_max_mb'] not in (12,32,64,128):
+            raise ValueError('Invalid cover size limit')
+        result['cover_max_mb'] = data['cover_max_mb']
+    if 'steamgriddb_filters' in data:
+        result['steamgriddb_filters'] = steamgriddb.validate_filters(data['steamgriddb_filters'])
     if 'auto_check_updates' in data:
         if type(data['auto_check_updates']) is not bool:raise ValueError('Unsupported update preference')
         result['auto_check_updates'] = data['auto_check_updates']
@@ -752,10 +755,12 @@ def archive_cover(url):
         query = [(k,v) for k,v in urllib.parse.parse_qsl(parts.query) if not k.startswith('utm_')]
         url = urllib.parse.urlunsplit(parts._replace(query=urllib.parse.urlencode(query)))
     request = urllib.request.Request(url, headers={'User-Agent':'BackloGame/0.1', 'Cache-Control':'no-cache'})
-    with urllib.request.urlopen(request, timeout=15) as response:
-        raw = response.read(12 * 1024 * 1024 + 1)
-    if len(raw) > 12 * 1024 * 1024:
-        raise ValueError('Обложка больше 12 МБ')
+    limit_mb=settings()['cover_max_mb']
+    limit=limit_mb * 1024 * 1024
+    with urllib.request.urlopen(request, timeout=30) as response:
+        raw = response.read(limit + 1)
+    if len(raw) > limit:
+        raise ValueError(f'Обложка больше {limit_mb} МБ')
     if raw.startswith(b'\x89PNG\r\n\x1a\n'):
         extension = 'png'
     elif raw.startswith(b'\xff\xd8\xff'):
@@ -1090,7 +1095,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply({'items': search_games(args.get('q', [''])[0], args.get('provider', ['steam'])[0], args.get('include_extras', ['0'])[0] == '1')})
             if parts.path == '/api/details':
                 from catalog_tools import enriched_details
-                return self.reply(enriched_details(sys.modules[__name__],args.get('source', [''])[0]))
+                source=args.get('source', [''])[0]
+                return self.reply(details(source) if args.get('raw',['0'])[0]=='1' else enriched_details(sys.modules[__name__],source))
             if parts.path == '/api/export':
                 return self.reply({'version': 1, 'games': library(), 'platforms': platform_names(), 'categories': category_names(), 'settings': settings()})
             if re.fullmatch(r'/covers/[a-f0-9]{64}\.(?:png|jpg|gif|webp)', parts.path):

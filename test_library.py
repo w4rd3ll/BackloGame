@@ -293,6 +293,13 @@ class LibraryTests(unittest.TestCase):
         self.assertEqual(lang,'ru')
         self.assertEqual(page['title'],'Игра')
 
+    def test_comparison_raw_details_do_not_enrich_from_other_catalogs(self):
+        with patch.object(server,'details',return_value={'title':'Portal','description':'Steam text'}),patch('catalog_tools.enriched_details') as enriched:
+            code,game=self.request('/api/details?raw=1&source=steam:400')
+        self.assertEqual(code,200)
+        self.assertEqual(game['description'],'Steam text')
+        enriched.assert_not_called()
+
     def test_steam_search_filters_real_types_and_keeps_editions(self):
         payload={'items':[{'type':'app','id':2,'name':'Game - Map Pack'},{'type':'app','id':1,'name':'Game - Gold Edition'},{'type':'app','id':3,'name':'Game - Soundtrack'},{'type':'app','id':4,'name':'Game - Demo'}]}
         def result(appid):

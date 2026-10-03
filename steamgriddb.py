@@ -8,6 +8,41 @@ import urllib.parse
 import urllib.error
 
 GALLERIES={}
+FILTER_DEFAULTS={'content':['standard'],'sizes':'all','style':'all','motion':'static','mime':'all','epilepsy':'false'}
+FILTER_VALUES={'sizes':('all','standard'),'style':('all','alternate','blurred','material','no_logo','white_logo'),
+               'motion':('static','animated','both'),'mime':('all','image/png','image/jpeg','image/webp'),
+               'epilepsy':('false','any','true')}
+
+
+def validate_filters(value):
+    if not isinstance(value,dict) or set(value)-set(FILTER_VALUES)-{'content','nsfw','humor'}:
+        raise ValueError('Invalid SteamGridDB filters')
+    result={**FILTER_DEFAULTS,'content':['standard']}
+    for key,item in value.items():
+        if key in ('content','nsfw','humor'):continue
+        if not isinstance(item,str) or item not in FILTER_VALUES[key]:
+            raise ValueError('Invalid SteamGridDB filters')
+        result[key]=item
+    for key in ('nsfw','humor'):
+        if key in value and value[key] not in ('false','any','true'):
+            raise ValueError('Invalid SteamGridDB filters')
+    if 'content' in value:
+        content=value['content']
+        if not isinstance(content,list) or any(not isinstance(item,str) or item not in ('standard','adult','humor') for item in content):
+            raise ValueError('Invalid SteamGridDB filters')
+        result['content']=[item for item in ('standard','adult','humor') if item in content]
+    elif 'nsfw' in value or 'humor' in value:
+        # Upgrade the earlier two-selector preferences without losing their intent.
+        result['content']=[]
+        if value.get('nsfw','false')!='true' and value.get('humor','false')!='true':result['content'].append('standard')
+        if value.get('nsfw','false')!='false':result['content'].append('adult')
+        if value.get('humor','false')!='false':result['content'].append('humor')
+    return result
+
+
+def content_matches(row,selected):
+    adult=bool(row.get('nsfw'));humor=bool(row.get('humor'))
+    return ('standard' in selected and not adult and not humor) or ('adult' in selected and adult) or ('humor' in selected and humor)
 
 
 def key_path(store):
@@ -71,9 +106,18 @@ def grids(store,data):
     if kind not in ('game','steam') or type(gid)!=int or gid<=0:raise ValueError('Invalid artwork game')
     page=data.get('page',0)
     if type(page)!=int or not 0<=page<=100:raise ValueError('Invalid artwork page')
-    rows=request(store,f'grids/{kind}/{gid}',dimensions='600x900' if orientation=='portrait' else '460x215,920x430',types='static',page=page)
+    filters=validate_filters(store.settings().get('steamgriddb_filters',{}))
+    query={'types':'static,animated' if filters['motion']=='both' else filters['motion'],
+           'nsfw':'any','humor':'any','epilepsy':filters['epilepsy'],'page':page}
+    if filters['sizes']=='standard':
+        query['dimensions']='600x900' if orientation=='portrait' else '460x215,920x430'
+    if filters['style']!='all':query['styles']=filters['style']
+    if filters['mime']!='all':query['mimes']=filters['mime']
+    if filters['content']==['standard']:query.update(nsfw='false',humor='false')
+    rows=request(store,f'grids/{kind}/{gid}',**query) if filters['content'] else []
     items=[]
     for row in rows:
+        if not content_matches(row,filters['content']):continue
         if type(row.get('id')) is not int or row['id']<=0:continue
         url=urllib.parse.urlsplit(row.get('url',''))
         if url.scheme!='https' or not (url.hostname or '').endswith('.steamgriddb.com'):continue
@@ -82,6 +126,8 @@ def grids(store,data):
         if row.get('mime') not in (None,'image/jpeg','image/png','image/webp'):continue
         thumb=urllib.parse.urlsplit(row.get('thumb') or row['url'])
         preview=row.get('thumb') if thumb.scheme=='https' and (thumb.hostname or '').endswith('.steamgriddb.com') else row['url']
+        # Animated thumbnails may be WebM videos, which cannot render in img.
+        if thumb.path.lower().endswith(('.webm','.mp4')):preview=row['url']
         items.append({'id':row['id'],'url':row['url'],'thumb':preview,'width':width,'height':height,'author':str((row.get('author') or {}).get('name') or '')[:300],'score':row.get('score',0)})
     for token,(until,*_) in list(GALLERIES.items()):
         if until<time.monotonic():GALLERIES.pop(token,None)

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 — 2026-10-03
+
+- Compare catalog fields without cross-catalog enrichment; Steam descriptions retain their original source. Remove the description-language warning and place the SteamGridDB apply button above the preview.
+
+- Keep library and gallery images mounted when selecting a game or cover; reuse the library sort collator and index games when decorating rows.
+
+- Clear stale gallery images and selected previews immediately when switching artwork orientation or loading another page.
+
+- SteamGridDB numbered page navigation replaces cumulative load-more scrolling.
+- Configurable 12/32/64/128 MiB cover download limit (64 MiB by default); large covers can still be compressed for HTML sharing.
+- Animated WebM thumbnails use their original image for gallery previews; Standard/Adult/Humor content is selected with shared checkboxes.
+
+- Persistent SteamGridDB gallery filters shared across games: Adult/NSFW, humor, sizes, style, animation, file format and flashing imagery. Filters refresh the gallery automatically.
+
 ## 0.4.1 — 2026-10-02
 
 - Show the app window after portable updates, including updates launched by older helpers using a hidden startup window.

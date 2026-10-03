@@ -165,3 +165,12 @@ header{gap:14px}.panelToggle{font-size:19px;line-height:1;padding:10px;flex-shri
 .brand .brandPrefix{transform:translateY(-.205em)}
 
 .libraryViewActions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}.libraryViewActions button{font-size:12px}#shareDialog{width:min(560px,94vw)}#shareResult{overflow-wrap:anywhere}
+
+/* Gallery filters share the orientation toolbar and persist across games. */
+.gridTabs{align-items:center}.gridFilters{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.gridFilters label{margin:0;display:grid;gap:4px;font-size:11px}.gridFilters label>span{color:var(--text-soft)}.gridFilters select{font-size:12px;padding:7px 9px;min-width:88px}.gridExtraFilters{position:relative;align-self:end}.gridExtraFilters>summary{list-style:none;cursor:pointer;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:12px}.gridExtraFilters[open]>summary{color:var(--accent);border-color:var(--accent)}.gridFilterPopover{position:absolute;right:0;top:calc(100% + 8px);z-index:5;display:grid;grid-template-columns:1fr 1fr;gap:14px;width:330px;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 36px #0007}.gridFilterPopover small{grid-column:1/-1;color:var(--text-soft);font-size:11px}@media(max-width:850px){.gridFilters{margin-left:0;flex:1 1 100%;padding-top:6px}}@media(max-width:450px){.gridFilterPopover{width:280px}}
+
+.gridContentFilter{position:relative;align-self:end}.gridContentFilter>summary{list-style:none;cursor:pointer;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:12px}.gridContentChoices{left:0;right:auto;width:185px;display:flex;flex-direction:column;gap:12px}.gridFilters .gridContentChoices label{display:flex;align-items:center;gap:9px;font-size:12px}.gridContentChoices input{accent-color:var(--accent)}
+
+.gridPagination{display:flex;align-items:center;justify-content:center;gap:12px;margin:0 0 16px}.gridPagination[hidden]{display:none}#gridPageNumbers{display:flex;gap:6px}.gridPagination button{font-size:12px;padding:7px 10px}.coverSizeSetting{max-width:280px;margin:14px 0}
+
+.gridAssets[aria-busy="true"]{min-height:180px}

@@ -72,6 +72,18 @@ class ArtworkTests(unittest.TestCase):
             self.assertNotIn('.steamgriddb-key',archive.namelist())
         self.assertNotIn('private-fixture-key',json.dumps(server.library()))
 
+    def test_replacing_custom_cover_cleans_old_file_and_preserves_backup(self):
+        url='https://cdn2.steamgriddb.com/grid/old.png'
+        server.save_game({'title':'Portal','image_local':self.c,'custom_covers':{'portrait':{'url':url,'local':self.a}}},self.game['id'])
+        gallery=self.gallery('portrait')
+        with patch.object(server,'archive_cover',return_value=self.b):steamgriddb.apply(server,{'id':self.game['id'],'gallery':gallery['gallery'],'asset':1})
+        server.cleanup_unused_covers()
+        self.assertFalse((self.root/self.a.lstrip('/')).exists())
+        self.assertTrue((self.root/self.b.lstrip('/')).exists())
+        self.assertTrue((self.root/self.c.lstrip('/')).exists())
+        backup=next((self.root/'backups').glob('*.zip'))
+        with zipfile.ZipFile(backup) as archive:self.assertIn(self.a.lstrip('/'),archive.namelist())
+
     def test_cleanup_retains_shared_covers_and_pending_undo(self):
         server.save_game({'title':'Portal','image_local':self.a},self.game['id'])
         other=server.save_game({'title':'Other','image_local':self.a})
@@ -149,3 +161,77 @@ class ArtworkTests(unittest.TestCase):
             card=steamgriddb.apply(server,{'id':self.game['id'],'gallery':gallery['gallery'],'asset':1})['game']
         self.assertIsNone(card['thumbnail_crop'])
         self.assertEqual(card['custom_covers']['portrait']['url'],url)
+
+
+class GalleryFilterTests(unittest.TestCase):
+    def test_saved_filters_apply_to_every_game_and_orientation(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(server,'DATA',Path(folder)), patch.object(server,'DB',Path(folder)/'library.sqlite3'):
+            server.init_db()
+            saved={'content':['adult','humor'],'sizes':'all','style':'no_logo','motion':'both','mime':'image/png','epilepsy':'false'}
+            values=server.validate_settings({'steamgriddb_filters':saved})
+            with server.connection() as db:
+                db.execute('INSERT OR REPLACE INTO settings(name,value) VALUES (?,?)',('steamgriddb_filters',json.dumps(values['steamgriddb_filters'])))
+            for gid,orientation in [(1,'portrait'),(2,'landscape')]:
+                with patch.object(steamgriddb,'request',return_value=[]) as request:
+                    steamgriddb.grids(server,{'game':gid,'orientation':orientation})
+                    self.assertEqual(request.call_args.kwargs,{'types':'static,animated','nsfw':'any','humor':'any','epilepsy':'false','styles':'no_logo','mimes':'image/png','page':0})
+            self.assertEqual(server.settings()['steamgriddb_filters'],saved)
+
+    def test_standard_dimensions_and_default_content_filters(self):
+        class Store:
+            DB='fixture.sqlite3'
+            @staticmethod
+            def settings():return {'steamgriddb_filters':{'sizes':'standard'}}
+        for orientation,dimensions in [('portrait','600x900'),('landscape','460x215,920x430')]:
+            with patch.object(steamgriddb,'request',return_value=[]) as request:
+                steamgriddb.grids(Store,{'game':1,'orientation':orientation})
+                self.assertEqual(request.call_args.kwargs['dimensions'],dimensions)
+                self.assertEqual(request.call_args.kwargs['nsfw'],'false')
+                self.assertEqual(request.call_args.kwargs['types'],'static')
+
+    def test_invalid_filters_rejected_before_external_request(self):
+        for invalid in [None,[],{'nsfw':True},{'sizes':'malicious'},{'unknown':'any'}]:
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                server.validate_settings({'steamgriddb_filters':invalid})
+
+
+class ContentSelectionTests(unittest.TestCase):
+    def test_every_checkbox_combination_uses_union(self):
+        from itertools import combinations
+        rows=[{'nsfw':False,'humor':False},{'nsfw':True,'humor':False},{'nsfw':False,'humor':True},{'nsfw':True,'humor':True}]
+        for size in range(4):
+            for chosen in combinations(('standard','adult','humor'),size):
+                expected=[('standard' in chosen),('adult' in chosen),('humor' in chosen),('adult' in chosen or 'humor' in chosen)]
+                self.assertEqual([bool(steamgriddb.content_matches(row,chosen)) for row in rows],expected)
+
+    def test_old_preferences_migrate_and_empty_selection_is_valid(self):
+        self.assertEqual(steamgriddb.validate_filters({'nsfw':'any','humor':'false'})['content'],['standard','adult'])
+        self.assertEqual(steamgriddb.validate_filters({'nsfw':'true','humor':'true'})['content'],['adult','humor'])
+        self.assertEqual(steamgriddb.validate_filters({'content':[]})['content'],[])
+        with self.assertRaises(ValueError):steamgriddb.validate_filters({'content':['unrecognized']})
+
+    def test_animated_video_thumbnail_uses_original_webp(self):
+        class Store:
+            DB='fixture.sqlite3'
+            @staticmethod
+            def settings():return {'steamgriddb_filters':{'content':['standard'],'motion':'animated'}}
+        row={'id':1,'url':'https://cdn2.steamgriddb.com/grid/animated.webp','thumb':'https://cdn2.steamgriddb.com/thumb/animated.webm','width':600,'height':900,'mime':'image/webp'}
+        with patch.object(steamgriddb,'request',return_value=[row]):
+            result=steamgriddb.grids(Store,{'game':1,'orientation':'portrait'})
+        self.assertEqual(result['items'][0]['thumb'],row['url'])
+
+
+class CoverSizeTests(unittest.TestCase):
+    def test_configurable_limit_accepts_large_cover_and_rejects_over_limit(self):
+        import io
+        raw=b'GIF89a'+b'x'*(13*1024*1024)
+        with tempfile.TemporaryDirectory() as folder, patch.object(server,'DATA',Path(folder)), patch.object(server,'DB',Path(folder)/'library.sqlite3'):
+            server.init_db()
+            with patch('urllib.request.urlopen',return_value=io.BytesIO(raw)):
+                local=server.archive_cover('https://cdn2.steamgriddb.com/grid/large.gif')
+            self.assertEqual((Path(folder)/local.lstrip('/')).stat().st_size,len(raw))
+            with patch.object(server,'settings',return_value={'cover_max_mb':12}),patch('urllib.request.urlopen',return_value=io.BytesIO(raw)),self.assertRaisesRegex(ValueError,'12'):
+                server.archive_cover('https://cdn2.steamgriddb.com/grid/too-large.gif')
+            self.assertEqual(len(list((Path(folder)/'covers').glob('*'))),1)
+        for invalid in (0,True,256,'64'):
+            with self.assertRaises(ValueError):server.validate_settings({'cover_max_mb':invalid})

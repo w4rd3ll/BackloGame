@@ -98,7 +98,7 @@ def apply_fields(store,data):
         raise ValueError('Invalid catalog field selection')
     if any(not isinstance(source,str) or not re.fullmatch(r'(?:steam|metacritic|wiki):[^\s]{1,500}',source) for source in fields.values()):
         raise ValueError('Invalid catalog source')
-    fresh={source:enriched_details(store,source) for source in dict.fromkeys(fields.values())}
+    fresh={source:store.details(source) for source in dict.fromkeys(fields.values())}
     patch={'title':old['title']}
     for field,source in fields.items():
         item=fresh[source]

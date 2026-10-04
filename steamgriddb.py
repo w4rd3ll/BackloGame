@@ -3,11 +3,14 @@ import json
 import re
 import secrets
 import time
+import threading
 import urllib.request
 import urllib.parse
 import urllib.error
 
 GALLERIES={}
+FILTERED_PAGES={}
+FILTERED_PAGES_LOCK=threading.Lock()
 FILTER_DEFAULTS={'content':['standard'],'sizes':'all','style':'all','motion':'static','mime':'all','epilepsy':'false'}
 FILTER_VALUES={'sizes':('all','standard'),'style':('all','alternate','blurred','material','no_logo','white_logo'),
                'motion':('static','animated','both'),'mime':('all','image/png','image/jpeg','image/webp'),
@@ -99,6 +102,53 @@ def search(store,data):
     return {'items':[{'id':row['id'],'title':row['name']} for row in rows if type(row.get('id')) is int and isinstance(row.get('name'),str)]}
 
 
+def artwork_items(rows,orientation,content):
+    items=[]
+    for row in rows:
+        if not content_matches(row,content):continue
+        if type(row.get('id')) is not int or row['id']<=0:continue
+        url=urllib.parse.urlsplit(row.get('url',''))
+        if url.scheme!='https' or not (url.hostname or '').endswith('.steamgriddb.com'):continue
+        width,height=row.get('width',0),row.get('height',0)
+        if not isinstance(width,int) or not isinstance(height,int) or not width or not height or (width<height)!=(orientation=='portrait'):continue
+        if row.get('mime') not in (None,'image/jpeg','image/png','image/webp'):continue
+        thumb=urllib.parse.urlsplit(row.get('thumb') or row['url'])
+        preview=row.get('thumb') if thumb.scheme=='https' and (thumb.hostname or '').endswith('.steamgriddb.com') else row['url']
+        # Animated thumbnails may be WebM videos, which cannot render in img.
+        if thumb.path.lower().endswith(('.webm','.mp4')):preview=row['url']
+        items.append({'id':row['id'],'url':row['url'],'thumb':preview,'width':width,'height':height,'author':str((row.get('author') or {}).get('name') or '')[:300],'score':row.get('score',0)})
+    return items
+
+
+def filtered_page(store,path,query,orientation,content,page):
+    """Page the union of selected categories, rather than filtering raw pages."""
+    key=(str(store.DB),path,orientation,tuple(content),tuple(sorted(query.items())))
+    with FILTERED_PAGES_LOCK:
+        now=time.monotonic()
+        for old,entry in list(FILTERED_PAGES.items()):
+            if entry['until']<now:FILTERED_PAGES.pop(old,None)
+        entry=FILTERED_PAGES.get(key)
+        if entry is None:
+            if len(FILTERED_PAGES)>=32:FILTERED_PAGES.pop(next(iter(FILTERED_PAGES)))
+            flags={'standard':('false','false'),'adult':('true','any'),'humor':('any','true')}
+            entry={'until':now+300,'lock':threading.Lock(),'items':[],'seen':set(),
+                   'streams':[{'nsfw':flags[c][0],'humor':flags[c][1],'page':0,'done':False} for c in content]}
+            FILTERED_PAGES[key]=entry
+    with entry['lock']:
+        stop=(page+1)*50
+        # Fetch one extra item to distinguish a full last page from a next page.
+        while len(entry['items'])<=stop and any(not s['done'] for s in entry['streams']):
+            for stream in entry['streams']:
+                if stream['done']:continue
+                rows=request(store,path,**query,**{k:stream[k] for k in ('nsfw','humor','page')})
+                for item in artwork_items(rows,orientation,content):
+                    if item['id'] not in entry['seen']:
+                        entry['seen'].add(item['id']);entry['items'].append(item)
+                stream['done']=len(rows)<50 or stream['page']>=100
+                stream['page']+=1
+        return entry['items'][page*50:stop],len(entry['items'])>stop
+
+
 def grids(store,data):
     orientation=data.get('orientation')
     if orientation not in ('portrait','landscape'):raise ValueError('Invalid artwork orientation')
@@ -113,28 +163,22 @@ def grids(store,data):
         query['dimensions']='600x900' if orientation=='portrait' else '460x215,920x430'
     if filters['style']!='all':query['styles']=filters['style']
     if filters['mime']!='all':query['mimes']=filters['mime']
-    if filters['content']==['standard']:query.update(nsfw='false',humor='false')
-    rows=request(store,f'grids/{kind}/{gid}',**query) if filters['content'] else []
-    items=[]
-    for row in rows:
-        if not content_matches(row,filters['content']):continue
-        if type(row.get('id')) is not int or row['id']<=0:continue
-        url=urllib.parse.urlsplit(row.get('url',''))
-        if url.scheme!='https' or not (url.hostname or '').endswith('.steamgriddb.com'):continue
-        width,height=row.get('width',0),row.get('height',0)
-        if not isinstance(width,int) or not isinstance(height,int) or not width or not height or (width<height)!=(orientation=='portrait'):continue
-        if row.get('mime') not in (None,'image/jpeg','image/png','image/webp'):continue
-        thumb=urllib.parse.urlsplit(row.get('thumb') or row['url'])
-        preview=row.get('thumb') if thumb.scheme=='https' and (thumb.hostname or '').endswith('.steamgriddb.com') else row['url']
-        # Animated thumbnails may be WebM videos, which cannot render in img.
-        if thumb.path.lower().endswith(('.webm','.mp4')):preview=row['url']
-        items.append({'id':row['id'],'url':row['url'],'thumb':preview,'width':width,'height':height,'author':str((row.get('author') or {}).get('name') or '')[:300],'score':row.get('score',0)})
+    path=f'grids/{kind}/{gid}'
+    content=filters['content']
+    if content and content not in (['standard'],['standard','adult','humor']):
+        for name in ('nsfw','humor','page'):query.pop(name)
+        items,more=filtered_page(store,path,query,orientation,content,page)
+    else:
+        if content==['standard']:query.update(nsfw='false',humor='false')
+        rows=request(store,path,**query) if content else []
+        items=artwork_items(rows,orientation,content)
+        more=len(rows)>=50
     for token,(until,*_) in list(GALLERIES.items()):
         if until<time.monotonic():GALLERIES.pop(token,None)
     if len(GALLERIES)>=100:GALLERIES.pop(next(iter(GALLERIES)))
     token=secrets.token_urlsafe(24)
     GALLERIES[token]=(time.monotonic()+1800,str(store.DB),orientation,items)
-    return {'items':items,'gallery':token,'more':len(rows)>=50}
+    return {'items':items,'gallery':token,'more':more}
 
 
 def game(store,gid):

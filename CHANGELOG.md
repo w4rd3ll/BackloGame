@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 — 2026-10-04
+
+- SteamGridDB searches selected content categories directly, so Adult and Humor covers appear without enabling Standard covers.
+- Combine selected categories with deduplication and paginate matching artwork; cache results briefly for stable backward navigation.
+
 ## 0.5.0 — 2026-10-03
 
 - Compare catalog fields without cross-catalog enrichment; Steam descriptions retain their original source. Remove the description-language warning and place the SteamGridDB apply button above the preview.

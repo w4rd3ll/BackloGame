@@ -174,7 +174,8 @@ class GalleryFilterTests(unittest.TestCase):
             for gid,orientation in [(1,'portrait'),(2,'landscape')]:
                 with patch.object(steamgriddb,'request',return_value=[]) as request:
                     steamgriddb.grids(server,{'game':gid,'orientation':orientation})
-                    self.assertEqual(request.call_args.kwargs,{'types':'static,animated','nsfw':'any','humor':'any','epilepsy':'false','styles':'no_logo','mimes':'image/png','page':0})
+                    base={'types':'static,animated','epilepsy':'false','styles':'no_logo','mimes':'image/png','page':0}
+                    self.assertEqual([c.kwargs for c in request.call_args_list],[dict(base,nsfw='true',humor='any'),dict(base,nsfw='any',humor='true')])
             self.assertEqual(server.settings()['steamgriddb_filters'],saved)
 
     def test_standard_dimensions_and_default_content_filters(self):
@@ -196,6 +197,48 @@ class GalleryFilterTests(unittest.TestCase):
 
 
 class ContentSelectionTests(unittest.TestCase):
+    def setUp(self):
+        steamgriddb.FILTERED_PAGES.clear()
+
+    def test_adult_and_humor_query_categories_directly_and_deduplicate_pages(self):
+        class Store:
+            DB='filtered-fixture.sqlite3'
+            @staticmethod
+            def settings():return {'steamgriddb_filters':{'content':['adult','humor'],'sizes':'standard'}}
+        def row(i,adult=True,humor=False):
+            return {'id':i,'url':f'https://cdn2.steamgriddb.com/grid/{i}.png','width':600,'height':900,'nsfw':adult,'humor':humor}
+        def response(store,path,**query):
+            self.assertEqual(query['dimensions'],'600x900')
+            if query['nsfw']=='true':
+                return [row(i) for i in range(1,51)] if query['page']==0 else [row(51)]
+            self.assertEqual((query['nsfw'],query['humor']),('any','true'))
+            return [row(1,True,True),row(52,False,True)]
+        with patch.object(steamgriddb,'request',side_effect=response) as request:
+            first=steamgriddb.grids(Store,{'game':1,'orientation':'portrait'})
+            self.assertEqual(len(first['items']),50)
+            self.assertTrue(first['more'])
+            second=steamgriddb.grids(Store,{'game':1,'orientation':'portrait','page':1})
+            self.assertEqual({r['id'] for r in second['items']},{51,52})
+            self.assertFalse(second['more'])
+            self.assertEqual(len({r['id'] for r in first['items']+second['items']}),52)
+            calls=request.call_count
+            again=steamgriddb.grids(Store,{'game':1,'orientation':'portrait'})
+            self.assertEqual(first['items'],again['items'])
+            self.assertEqual(calls,request.call_count)
+
+    def test_skips_pages_with_wrong_orientation_instead_of_showing_empty_page(self):
+        class Store:
+            DB='filtered-fixture.sqlite3'
+            @staticmethod
+            def settings():return {'steamgriddb_filters':{'content':['adult']}}
+        wrong=[{'id':i,'url':f'https://cdn2.steamgriddb.com/grid/{i}.png','width':920,'height':430,'nsfw':True} for i in range(1,51)]
+        right={'id':51,'url':'https://cdn2.steamgriddb.com/grid/51.png','width':600,'height':900,'nsfw':True}
+        with patch.object(steamgriddb,'request',side_effect=[wrong,[right]]) as request:
+            result=steamgriddb.grids(Store,{'game':1,'orientation':'portrait'})
+        self.assertEqual([r['id'] for r in result['items']],[51])
+        self.assertFalse(result['more'])
+        self.assertEqual([c.kwargs['page'] for c in request.call_args_list],[0,1])
+
     def test_every_checkbox_combination_uses_union(self):
         from itertools import combinations
         rows=[{'nsfw':False,'humor':False},{'nsfw':True,'humor':False},{'nsfw':False,'humor':True},{'nsfw':True,'humor':True}]

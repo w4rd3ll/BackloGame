@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2 — 2026-10-04
+
+- Show a large original-cover preview on hover in the SteamGridDB gallery, with a short delay and placement within the window. Hide it on pointer exit, scrolling or resizing.
+- Apply a cover by double-clicking its gallery thumbnail or selected preview; prevent overlapping apply requests.
+
 ## 0.5.1 — 2026-10-04
 
 - SteamGridDB searches selected content categories directly, so Adult and Humor covers appear without enabling Standard covers.

@@ -1,12 +1,46 @@
 'use strict';
 const gridDialog=document.createElement('dialog');gridDialog.className='gridDialog';document.body.append(gridDialog);
 let gridSession=0;
+let gridHoverCleanup=()=>{};
+function wireGridHover(dialog){
+  const popup=document.createElement('div');popup.className='gridHoverPreview';popup.hidden=true;
+  popup.setAttribute('aria-hidden','true');dialog.append(popup);
+  const events=new AbortController();let timer=null,active=null;
+  function hide(){clearTimeout(timer);timer=null;active=null;popup.hidden=true;popup.replaceChildren();}
+  function show(target){
+    if(active===target)return;
+    hide();active=target;
+    timer=setTimeout(()=>{
+      if(!dialog.open||!target.isConnected||active!==target)return;
+      const width=Number(target.dataset.hoverWidth||target.naturalWidth||600);
+      const height=Number(target.dataset.hoverHeight||target.naturalHeight||900);
+      const scale=Math.min(1,(innerWidth-32)*.65/width,(innerHeight-32)*.88/height,660/height,820/width);
+      const w=Math.max(1,width*scale),h=Math.max(1,height*scale),r=target.getBoundingClientRect();
+      const left=r.right+14+w<=innerWidth-16?r.right+14:Math.max(16,r.left-w-14);
+      popup.style.left=left+'px';popup.style.top=Math.max(16,Math.min(r.top,innerHeight-h-16))+'px';
+      popup.style.width=w+'px';popup.style.height=h+'px';
+      const image=document.createElement('img');image.alt='';image.referrerPolicy='no-referrer';
+      image.onerror=()=>{if(active===target)hide();};
+      image.src=target.dataset.hoverUrl||target.src;popup.replaceChildren(image);popup.hidden=false;
+    },250);
+  }
+  const targetOf=event=>event.target.closest('.gridAsset,#gridPreview img');
+  dialog.addEventListener('mouseover',event=>{const target=targetOf(event);if(target&&window.matchMedia('(hover:hover)').matches)show(target);},{signal:events.signal});
+  dialog.addEventListener('mouseout',event=>{if(active&&!active.contains(event.relatedTarget))hide();},{signal:events.signal});
+  dialog.addEventListener('click',event=>{if(event.target.closest('button,input,select,summary'))hide();},{signal:events.signal});
+  dialog.addEventListener('scroll',hide,{signal:events.signal,passive:true});
+  window.addEventListener('resize',hide,{signal:events.signal,passive:true});
+  dialog.addEventListener('close',hide,{signal:events.signal});
+  return ()=>{hide();events.abort();popup.remove();};
+}
 async function openSteamGrid(game,initialOrientation='portrait'){
   if(dirty){toast(t('Сначала сохрани изменения в карточке'),true);return;}
   if(catalogBatchRunning||coversUpdating){toast(t('Дождись обновления каталога'),true);return;}
   const session=++gridSession;
+  gridHoverCleanup();
   let orientation=initialOrientation,target=null,page=0,revision=0,saving=false,assets=[],chosen=null,loading=false,hasMore=false;
   gridDialog.innerHTML=`<div class="dialogHead"><div><h2>${t('Выбрать обложку из каталога')}</h2><p class="hint">${e(game.title)}</p></div><button id="gridClose" aria-label="${t('Закрыть')}">✕</button></div><form id="gridSearch"><input id="gridQuery" value="${e(game.original_title||game.title)}" aria-label="${t('Название игры')}" required maxlength="150"><button>${t('Найти')}</button></form><div id="gridMatches" class="gridMatches"></div><div class="gridTabs"><button data-grid-tab="portrait">${t('Вертикальная')}</button><button data-grid-tab="landscape">${t('Горизонтальная')}</button><button id="gridReset" class="text">${t('Вернуть исходную обложку')}</button></div><p id="gridStatus" class="hint" role="status"></p><div class="gridLayout"><div><nav id="gridPages" class="gridPagination" aria-label="${t('Страницы обложек')}" hidden><button id="gridPrevious">← ${t('Назад')}</button><div id="gridPageNumbers"></div><button id="gridNext">${t('Далее')} →</button></nav><div id="gridAssets" class="gridAssets"></div></div><aside id="gridPreview"><p class="hint">${t('Выбери обложку для предпросмотра')}</p></aside></div><p class="hint">${t('Вертикальная обложка — карточки и описание. Горизонтальная — список. Обе сохраняются на компьютере.')}</p>`;
+  gridHoverCleanup=wireGridHover(gridDialog);
   const filters=document.createElement('div');filters.className='gridFilters';
   const choices={nsfw:[['false','Скрыть'],['any','Все'],['true','Только Adult']],humor:[['false','Скрыть'],['any','Все'],['true','Только юмор']],sizes:[['all','Все размеры'],['standard','Стандартные']],style:[['all','Все стили'],['alternate','Альтернативный'],['blurred','Размытый'],['material','Материальный'],['no_logo','Без логотипа'],['white_logo','Белый логотип']],motion:[['static','Статичные'],['animated','Анимированные'],['both','Все']],mime:[['all','Все форматы'],['image/png','PNG'],['image/jpeg','JPEG'],['image/webp','WebP']],epilepsy:[['false','Скрыть'],['any','Все'],['true','Только мигающие']]};
   const filterSelect=(key,label)=>`<label><span>${t(label)}</span><select data-grid-filter="${key}" aria-label="${t(label)}">${choices[key].map(([value,text])=>`<option value="${value}">${t(text)}</option>`).join('')}</select></label>`;
@@ -35,18 +69,25 @@ async function openSteamGrid(game,initialOrientation='portrait'){
     $('gridReset').disabled=!games.find(g=>g.id===game.id)?.custom_covers?.[orientation];
   }
   function lock(value){saving=value;if(value){revision++;loading=false;}gridDialog.querySelectorAll('button,input,select').forEach(x=>x.disabled=value);if(!value){tabs();pagination();}}
+  async function applyCover(row){
+    if(saving||loading||!row)return;
+    lock(true);
+    try{await api('/api/steamgriddb/apply',{id:game.id,gallery:row.gallery,asset:row.id});await reload();renderInspector();$('gridStatus').textContent=t('Обложка сохранена');toast(t('Обложка сохранена'));}
+    catch(err){$('gridStatus').textContent=t(err.message);}
+    finally{lock(false);}
+  }
   function draw(){
-    $('gridAssets').innerHTML=assets.map((row,i)=>`<button class="gridAsset ${chosen===row?'selected':''}" data-grid-asset="${i}" aria-label="${e(row.author+' · '+row.width+' × '+row.height)}"><img src="${e(row.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"><small>${row.width} × ${row.height}</small></button>`).join('');
-    $('gridAssets').querySelectorAll('[data-grid-asset]').forEach(button=>button.onclick=()=>{
+    $('gridAssets').innerHTML=assets.map((row,i)=>`<button class="gridAsset ${chosen===row?'selected':''}" data-grid-asset="${i}" data-hover-url="${e(row.url)}" data-hover-width="${row.width}" data-hover-height="${row.height}" aria-label="${e(row.author+' · '+row.width+' × '+row.height)}"><img src="${e(row.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"><small>${row.width} × ${row.height}</small></button>`).join('');
+    $('gridAssets').querySelectorAll('[data-grid-asset]').forEach(button=>{
+      const row=assets[Number(button.dataset.gridAsset)];
+      button.ondblclick=()=>applyCover(row);
+      button.onclick=()=>{
       chosen=assets[Number(button.dataset.gridAsset)];
       $('gridAssets').querySelector('.selected')?.classList.remove('selected');
       button.classList.add('selected');
       $('gridPreview').innerHTML=`<button id="gridUse" class="primary">${t('Использовать обложку')}</button><p>${e(chosen.author)} · ${chosen.width} × ${chosen.height}</p><img src="${e(chosen.url)}" alt="${t('Предпросмотр')}" referrerpolicy="no-referrer">`;
-      $('gridUse').onclick=async()=>{
-        lock(true);
-        try{await api('/api/steamgriddb/apply',{id:game.id,gallery:chosen.gallery,asset:chosen.id});await reload();renderInspector();$('gridStatus').textContent=t('Обложка сохранена');toast(t('Обложка сохранена'));}
-        catch(err){$('gridStatus').textContent=t(err.message);}
-        finally{lock(false);}
+      $('gridUse').onclick=()=>applyCover(row);
+      $('gridPreview').querySelector('img').ondblclick=()=>applyCover(row);
       };
     });
   }

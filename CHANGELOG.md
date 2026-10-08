@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1 - 2026-10-08
+
+- Remove cover comparison from the metadata update table; artwork selection remains in its dedicated catalog dialog.
+
 ## 0.6.0 — 2026-10-08
 
 - Add IGDB for game search, metadata comparison, series and portrait/landscape covers; Twitch credentials stay on the catalog relay.

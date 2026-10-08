@@ -152,7 +152,6 @@ header{gap:14px}.panelToggle{font-size:19px;line-height:1;padding:10px;flex-shri
 .catalogFieldChoice input:disabled{cursor:default}
 .catalogFieldSelected{background:var(--accent-bg)}
 .catalogCompareDescription{max-height:170px;overflow:auto;white-space:pre-line;font-size:12px;line-height:1.6}
-.catalogCompareCover{width:100%;height:135px;object-fit:contain;background:var(--cover-bg);border-radius:6px}
 .catalogComparisonActions{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:20px}
 
 /* Align the title vertically when its optional details are absent. */

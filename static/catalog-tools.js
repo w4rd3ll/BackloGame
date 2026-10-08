@@ -42,7 +42,7 @@ async function openCatalogUpdate(game,mode='metadata',requestedProvider=null,ori
   $('catalogUpdateSearch').onsubmit=event=>{event.preventDefault();search();};$('catalogUpdateProvider').onchange=()=>{if($('catalogUpdateProvider').value==='steamgriddb'){const format=$('catalogCoverOrientation').value;serial++;catalogUpdateDialog.close();openSteamGrid(game,format);}else search();};
   catalogUpdateDialog.showModal();await search();
 }
-const catalogComparisonFields=[['title','Название'],['description','Описание'],['genre','Жанры, через запятую'],['developer','Разработчик'],['available_platforms','Доступные платформы'],['release_date','Дата выхода'],['series','Серии, через ;'],['image','Обложка']];
+const catalogComparisonFields=[['title','Название'],['description','Описание'],['genre','Жанры, через запятую'],['developer','Разработчик'],['available_platforms','Доступные платформы'],['release_date','Дата выхода'],['series','Серии, через ;']];
 function catalogComparisonProviderLabel(provider){return {steam:'Steam',metacritic:'Metacritic',wikipedia:'Wikipedia / Wikidata',igdb:'IGDB'}[provider]||provider;}
 function catalogFieldValue(game,field){return field==='release_date'?(game.release_date||game.release_label||''):field==='image'?(game.custom_covers?.portrait?.url||game.image||''):game[field]||'';}
 function catalogChosenFields(selected,states){
@@ -67,7 +67,6 @@ async function openCatalogComparison(game){
   function value(item,field){
     const content=catalogFieldValue(item,field);
     if(!content)return `<span class="hint">${t('Нет данных')}</span>`;
-    if(field==='image')return `<img class="catalogCompareCover" src="${e(item.custom_covers?.portrait?.local||item.image_local||content)}" alt="" referrerpolicy="no-referrer">`;
     if(field==='description')return `<div class="catalogCompareDescription">${e(content)}</div>`;
     return `<span>${e(Array.isArray(content)?content.join(', '):content)}</span>`;
   }

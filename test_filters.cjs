@@ -71,11 +71,17 @@ get('sortField').value='completed_at';assert.deepEqual(ids(),[1,2,3]);
 run('direction=-1');assert.deepEqual(ids(),[2,1,3]);
 console.log('Completion-date sorting keeps unknown dates last in both directions: OK');
 run(`games=[{id:1,title:'A',series:'-'},{id:2,title:'B',series:''},{id:3,title:'C',series:'Без серии'},{id:4,title:'D',series:'Portal'},{id:5,title:'E',series:'-; Portal'}];statusFilter='';direction=1;`);
-get('sortField').value='title';get('seriesFilter').value='Без серии';assert.deepEqual(ids(),[1,2,3]);
+get('sortField').value='title';get('seriesFilter').value='Без серии';assert.deepEqual(ids(),[2,3]);
 get('seriesFilter').value='Portal';assert.deepEqual(ids(),[4,5]);
 run('rebuildOptions()');
 assert.match(get('seriesFilter').innerHTML,/<option value="Без серии">No series<\/option>$/);
-assert.doesNotMatch(get('seriesFilter').innerHTML,/<option value="-">/);
+assert.match(get('seriesFilter').innerHTML,/<option value="-">/);
 assert.equal(run('displayValue("Без серии")'),'No series');
 run('uiLanguage="ru";rebuildOptions()');assert.match(get('seriesFilter').innerHTML,/<option value="Без серии">Без серии<\/option>$/);
 console.log('No-series filter includes empty and legacy placeholders, excludes real series and stays last in both languages: OK');
+const searchCases=[
+ ['clank ratchet',true],['Ratchet’s',true],["ratchet's",true],['RATCHET',true],['ratchet -portal',true],['ratchet -clank',false],['"ratchet clank"',false],['"ratchets"',true],['ежик',true]
+];
+for(const [query,expected] of searchCases){context.searchQuery=query;context.searchExpected=expected;assert.equal(run("matchesLibrarySearch({title:'Ratchet’s & Clank',notes:'Ёжик'},librarySearchTerms(searchQuery))"),expected,query);}
+run("var mutableSearchGame={title:'Portal'}; matchesLibrarySearch(mutableSearchGame,librarySearchTerms('Portal')); mutableSearchGame.title='Ratchet';");assert.equal(run("matchesLibrarySearch(mutableSearchGame,librarySearchTerms('Ratchet'))"),true);
+console.log('Library search: unordered words, apostrophes, case, exclusions, quoted phrases, yo/e and cache refresh: OK');

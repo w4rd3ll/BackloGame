@@ -159,4 +159,4 @@ openRemoteLibrary=function(){
   select.onchange=()=>{original();if(select.value==='steam'){$('libraryProfile').placeholder='https://steamcommunity.com/id/…';if(preferences.steam_relay_url){$('librarySteamKey').placeholder=t('Личный API key (необязательно)');$('libraryHelp').textContent=t('Можно оставить ключ пустым: список загрузится через настроенный Steam-сервис.');}}else $('libraryProfile').placeholder='https://howlongtobeat.com/user/…';};
 };
 libraryButton.onclick=()=>openRemoteLibrary();
-libraryDialog.addEventListener('click',event=>{if(event.target===libraryDialog){const r=libraryDialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)libraryDialog.close();}});
+wireDialogBackdrop(libraryDialog,()=>libraryDialog.close());

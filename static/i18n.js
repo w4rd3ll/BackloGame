@@ -1,6 +1,16 @@
 'use strict';
 let uiLanguage='en';
 const translations={
+  "Подборки": "Collections",
+  "Сохранить подборку": "Save collection",
+  "Обновить": "Update",
+  "Выбрать подборку": "Select a collection",
+  "Название подборки": "Collection name",
+  "Поиск": "Search",
+  "Категория": "Category",
+  "Убрать фильтр": "Remove filter",
+  "Сбросить всё": "Clear all",
+
   "Формат обложки": "Cover format",
   "Показать ещё": "Show more",
   "Инструкция": "Instructions",

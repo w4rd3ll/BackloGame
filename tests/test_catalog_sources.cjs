@@ -4,7 +4,7 @@ function node(){return {value:'Portal',disabled:false,innerHTML:'',textContent:'
 const dialog=node();dialog.open=false;dialog.showModal=()=>dialog.open=true;dialog.close=()=>dialog.open=false;
 dialog.querySelectorAll=selector=>selector==='[data-catalog-source]'?checks:[];
 dialog.querySelector=selector=>checks.find(input=>selector.includes('"'+input.dataset.catalogSource+'"'));
-const ctx=vm.createContext({document:{createElement:()=>dialog,body:{append:()=>{}}},preferences:{catalog_sources:checks.map(x=>x.dataset.catalogSource)},$:id=>nodes[id]||(nodes[id]=node()),t:x=>x,e:x=>x,displayValue:x=>x,toast:()=>{},busy:()=>{},api:async(path,body)=>{calls.push({path,body});return path==='/api/settings'?body:{items:[]};}});
+const ctx=vm.createContext({document:{createElement:()=>dialog,body:{append:()=>{}}},wireDialogBackdrop:()=>{},preferences:{catalog_sources:checks.map(x=>x.dataset.catalogSource)},$:id=>nodes[id]||(nodes[id]=node()),t:x=>x,e:x=>x,displayValue:x=>x,toast:()=>{},busy:()=>{},api:async(path,body)=>{calls.push({path,body});return path==='/api/settings'?body:{items:[]};}});
 vm.runInContext(fs.readFileSync('static/catalog-tools.js','utf8').split('const inspectorBeforeCatalog=')[0],ctx);
 (async()=>{
  await vm.runInContext("openCatalogComparison({id:1,title:'Portal',platform:'PC'})",ctx);

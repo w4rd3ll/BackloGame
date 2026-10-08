@@ -62,7 +62,7 @@ async function openSteamGrid(game,initialOrientation='portrait'){
   $('gridSearch').insertBefore(provider,$('gridSearch').querySelector('button'));
   provider.onchange=()=>{if(!saving){const next=provider.value;close();openCatalogUpdate(game,'cover',next,orientation);}};
   $('gridClose').onclick=close;gridDialog.oncancel=event=>{if(saving)event.preventDefault();else revision++;};
-  gridDialog.onclick=event=>{if(event.target===gridDialog){const r=gridDialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)close();}};
+  wireDialogBackdrop(gridDialog,()=>close());
   function tabs(){
     gridDialog.querySelectorAll('[data-grid-tab]').forEach(button=>{button.classList.toggle('primary',button.dataset.gridTab===orientation);button.setAttribute('aria-pressed',String(button.dataset.gridTab===orientation));});
     $('gridAssets').dataset.orientation=orientation;

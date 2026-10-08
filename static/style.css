@@ -197,3 +197,13 @@ header{gap:14px}.panelToggle{font-size:19px;line-height:1;padding:10px;flex-shri
 @media(max-width:650px){.catalogComparisonDialog[open]{padding:12px}.catalogComparisonDialog .dialogHead{gap:8px}.catalogComparisonDialog .dialogHead h2{font-size:19px}.catalogComparisonDialog .catalogSourceChoices{order:3;width:100%}}
 
 .catalogComparisonDialog .catalogComparisonTable thead th>p{margin:5px 0 0;line-height:1.35}
+.activeFilterChips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px;align-items:center}
+.activeFilterChips[hidden]{display:none}
+.filterChip{padding:5px 9px;font-size:12px;max-width:100%;overflow-wrap:anywhere;text-align:left}
+.filterChip span{margin-left:5px;opacity:.7}
+.savedCollections{margin-top:14px}
+.savedCollections label{margin-bottom:8px}
+.collectionActions{display:flex;flex-wrap:wrap;gap:5px}
+.collectionActions button{padding:6px 8px;font-size:11px}
+.collectionNameDialog{width:min(420px,90vw)}
+.game.keyboardTarget{outline:2px solid var(--accent);outline-offset:2px}

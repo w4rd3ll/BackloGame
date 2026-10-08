@@ -13,7 +13,7 @@ mergeButton.onclick=async()=>{
   let version=0,preview=null,applying=false;
   const close=()=>{if(!applying)mergeDialog.close();};$('closeMerge').onclick=close;$('cancelMerge').onclick=close;
   mergeDialog.oncancel=event=>{if(applying)event.preventDefault();};
-  mergeDialog.onclick=event=>{if(event.target===mergeDialog){const r=mergeDialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)close();}};
+  wireDialogBackdrop(mergeDialog,()=>close());
   async function refresh(){
     const revision=++version;preview=null;$('applyMerge').disabled=true;$('mergeResult').textContent=t('Загрузка…');
     try{

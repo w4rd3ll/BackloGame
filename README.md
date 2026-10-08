@@ -14,7 +14,7 @@ Demonstration library; progress is illustrative. Downloads start empty.
 
 ## Get started
 
-1. Download `BackloGame-0.3.1-windows-x64-portable.zip` from Releases.
+1. Download `BackloGame-0.6.3-windows-x64-portable.zip` from Releases.
 2. If Windows blocks startup, open the ZIP properties, select **Unblock**, then extract again.
    Extract the entire archive to a writable local folder.
 3. Run `BackloGame.exe`. Keep `_internal` beside it.
@@ -27,8 +27,8 @@ Russian in **Settings → General → Interface language**.
 
 ## Features
 
-- Search Steam, Wikipedia, or Metacritic, or add games manually.
-- Compare all three catalogs side by side and choose a source for each field when refreshing details.
+- Search Steam, IGDB, Wikipedia / Wikidata, or Metacritic, or add games manually.
+- Choose which of the four catalogs to search, compare them side by side, and select a source for each metadata field. Cover selection has its own gallery.
 - Import public Steam libraries and HLTB profiles or CSV exports, with duplicate previews.
 - Track replays and multiple completion dates, with a platform for each playthrough.
 - Explore interactive statistics with bars and colorful pie charts.
@@ -39,9 +39,9 @@ Russian in **Settings → General → Interface language**.
 - Use cards, a list, or a compact one-line list with small covers.
 - Filter by platform, genre, series, tags, and dates; sort or drag into manual order.
 - Add notes, tags, priorities, and several series separated by `;`.
-- Choose and save portrait and landscape covers from SteamGridDB and other catalogs.
+- Choose and save portrait and landscape covers from SteamGridDB and other catalogs. SteamGridDB supports saved content/style/size filters, paginated results, enlarged hover previews, and double-click to apply.
 - Select a manual thumbnail crop and fill missing series from Wikidata.
-- Merge duplicate cards with a preview, retained history, and undo.
+- Merge two or more duplicate cards with a preview, retained history, and undo.
 - Edit multiple games together and collapse the side panels.
 - Share the current category and filters as an offline HTML file with embedded, compressed cover thumbnails. Original artwork stays unchanged. Personal notes are included only when explicitly enabled.
 - Export and restore full backups. At most **10** ZIP backups are retained.
@@ -57,6 +57,20 @@ it does not launch games or synchronize accounts.
 ![Compact list](docs/screenshots/compact.jpg)
 
 </details>
+
+## Library navigation
+
+- Active filters appear above the games. Remove one with its ×, or clear all.
+- Search words in any order across titles, original titles, notes, series, tags,
+  platforms, genres, and developers. Apostrophes and accents do not affect matches.
+  Use quotes for a phrase and `-word` to exclude a word.
+- Save the current category, search, filters, sorting, and view as a named collection.
+  Collections update automatically as games are added or edited. Update replaces
+  the selected collection's conditions; Delete removes only the saved collection.
+  Collections live in the local database and are included in full backups.
+- With no input field focused and no dialog open, type a title prefix such as `Rat`
+  to jump to the first matching visible game. A one-second pause starts a new prefix.
+- **No series** filters games whose series field is empty; it is not a stored series.
 
 ## Your data
 

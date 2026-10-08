@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.3 - 2026-10-08
+
+- Prevent dialogs from closing when text selection starts inside and the pointer is released outside; dismiss only genuine backdrop clicks.
+- Show active category, search and filter chips with individual removal and a clear-all action.
+- Search library words in any order across metadata, normalize punctuation and accents, and support quoted phrases and excluded words.
+- Save named dynamic collections with category, search, filters, sorting and view; retain them in the database and full backups.
+- Type a title prefix outside input fields and dialogs to jump to the first matching visible game.
+- Store missing series as an empty field, retain the No series filter and migrate old placeholder values with a backup.
+- Update English and Russian documentation.
+
 ## 0.6.2 - 2026-10-08
 
 - Sort game titles with Latin names before Cyrillic names while retaining natural numeric ordering.

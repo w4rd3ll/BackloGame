@@ -17,7 +17,7 @@ async function openCatalogUpdate(game,mode='metadata',requestedProvider=null,ori
   }
   let serial=0,applying=false;
   const close=()=>{if(!applying)catalogUpdateDialog.close();};$('closeCatalogUpdate').onclick=close;catalogUpdateDialog.oncancel=event=>{if(applying)event.preventDefault();};
-  catalogUpdateDialog.onclick=event=>{if(event.target===catalogUpdateDialog){const r=catalogUpdateDialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)close();}};
+  wireDialogBackdrop(catalogUpdateDialog,()=>close());
   async function search(){
     const revision=++serial;$('catalogUpdateResults').hidden=false;$('catalogUpdateResults').textContent=t('Ищем в каталоге…');$('catalogUpdatePreview').textContent='';
     try{
@@ -63,7 +63,7 @@ async function openCatalogComparison(game){
   const active=()=>session===catalogUpdateSession&&catalogUpdateDialog.open;
   const close=()=>{if(!applying){catalogUpdateDialog.close();++catalogUpdateSession;catalogUpdateDialog.classList.remove('catalogComparisonDialog');}};
   $('closeCatalogUpdate').onclick=close;catalogUpdateDialog.oncancel=event=>{event.preventDefault();close();};
-  catalogUpdateDialog.onclick=event=>{if(event.target===catalogUpdateDialog){const r=catalogUpdateDialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)close();}};
+  wireDialogBackdrop(catalogUpdateDialog,()=>close());
   function value(item,field){
     const content=catalogFieldValue(item,field);
     if(!content)return `<span class="hint">${t('Нет данных')}</span>`;

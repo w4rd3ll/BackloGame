@@ -10,7 +10,7 @@ function openSharing(){
   const close=()=>{if(!saving)shareDialog.close();};
   $('closeSharing').onclick=close;$('cancelSharing').onclick=close;
   shareDialog.oncancel=event=>{if(saving)event.preventDefault();};
-  shareDialog.onclick=event=>{if(event.target===shareDialog){const rect=shareDialog.getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)close();}};
+  wireDialogBackdrop(shareDialog,()=>close());
   $('shareForm').onsubmit=async event=>{
     event.preventDefault();if(saving)return;
     saving=true;shareDialog.querySelectorAll('input,button').forEach(control=>control.disabled=true);

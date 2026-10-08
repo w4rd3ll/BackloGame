@@ -35,6 +35,7 @@ STATUSES = ['Хочу пройти', 'Играю', 'Перепрохожу', 'П
 DEFAULT_PLATFORMS = ['Пока неизвестно','PC','Steam Deck','PlayStation 5','PlayStation 4','Xbox Series X/S','Xbox One','Nintendo Switch','Nintendo Switch 2','Android','iOS','Эмулятор']
 DEFAULT_SETTINGS = {'hidden_categories': [], 'show_card_notes': True, 'default_category': 'Хочу пройти', 'language': 'en'}
 DEFAULT_SETTINGS['category_sorts'] = {}
+DEFAULT_SETTINGS['saved_collections'] = []
 DEFAULT_SETTINGS['theme'] = 'teal'
 DEFAULT_SETTINGS['card_details'] = 'both'
 DEFAULT_SETTINGS['cover_max_mb'] = 64
@@ -440,6 +441,7 @@ def init_db():
             if platform:
                 db.execute('INSERT OR IGNORE INTO platforms(name) VALUES (?)', (platform,))
 
+    migrate_empty_series()
 
 def playthroughs(game):
     if 'playthroughs' in game:
@@ -520,6 +522,28 @@ def validate_settings(data, allowed_categories=None):
     if not isinstance(data, dict):
         raise ValueError('Некорректные настройки')
     result = {}
+    if 'saved_collections' in data:
+        collections = data['saved_collections']
+        if not isinstance(collections, list) or len(collections) > 100:
+            raise ValueError('Invalid saved collections')
+        clean = []
+        text_fields = {'platformFilter','genreFilter','seriesFilter','tagFilter','priorityFilter','releaseFrom','releaseTo','addedFrom','addedTo','librarySearch'}
+        ids = set()
+        for item in collections:
+            if not isinstance(item, dict) or not isinstance(item.get('id'), str) or not 1 <= len(item['id']) <= 100 or item['id'] in ids:
+                raise ValueError('Invalid saved collection ID')
+            if not isinstance(item.get('name'), str) or not 1 <= len(item['name'].strip()) <= 80:
+                raise ValueError('Invalid saved collection name')
+            state = item.get('state')
+            if not isinstance(state, dict) or any(not isinstance(state.get(key,''),str) or len(state.get(key,''))>1000 for key in text_fields):
+                raise ValueError('Invalid saved collection filters')
+            if not isinstance(state.get('status',''),str) or len(state.get('status',''))>100 or type(state.get('unknownRelease',False)) is not bool:
+                raise ValueError('Invalid saved collection category')
+            if state.get('sort') not in ('manual_order','added_at','completed_at','title','release_date','platform','status','genre','series','tags','priority') or type(state.get('direction')) is not int or state['direction'] not in (-1,1) or state.get('view') not in ('cards','list','compact'):
+                raise ValueError('Invalid saved collection view')
+            ids.add(item['id'])
+            clean.append({'id':item['id'],'name':item['name'].strip(),'state':{**{key:state.get(key,'') for key in text_fields},'status':state.get('status',''),'unknownRelease':state.get('unknownRelease',False),'sort':state['sort'],'direction':state['direction'],'view':state['view']}})
+        result['saved_collections'] = clean
     if 'catalog_sources' in data:
         sources=data['catalog_sources']
         if not isinstance(sources,list) or not sources or any(not isinstance(x,str) or x not in DEFAULT_SETTINGS['catalog_sources'] for x in sources):
@@ -820,8 +844,31 @@ def update_cover(gid):
     return next(g for g in library() if g['id'] == gid)
 
 
+def normalize_series(value):
+    return '; '.join(dict.fromkeys(part.strip() for part in str(value or '').split(';') if part.strip() and part.strip()!='Без серии'))
+
+
 def has_no_series(value):
-    return not any(part.strip() not in ('', '-', 'Без серии') for part in str(value or '').split(';'))
+    return not normalize_series(value)
+
+
+def migrate_empty_series():
+    """Convert old placeholder values once, preserving future literal names."""
+    with MUTATION_LOCK:
+        with connection() as db:
+            if db.execute('SELECT 1 FROM settings WHERE name=?',('empty_series_storage_v1',)).fetchone():return
+            rows=db.execute('SELECT id,payload FROM games').fetchall()
+        updates=[]
+        for gid,payload in rows:
+            game=json.loads(payload)
+            value='; '.join(part.strip() for part in str(game.get('series') or '').split(';') if part.strip() not in ('','-','Без серии'))
+            if game.get('series')!=value:
+                game['series']=value;updates.append((json.dumps(game,ensure_ascii=False),gid))
+        if updates:create_backup()
+        with connection() as db:
+            db.executemany('UPDATE games SET payload=? WHERE id=?',updates)
+            db.execute('INSERT INTO settings VALUES (?,?)',('empty_series_storage_v1','true'))
+
 
 
 def save_game(data, gid=None, db=None):
@@ -876,16 +923,14 @@ def save_game(data, gid=None, db=None):
             if 'hltb_entries' in data and data['hltb_entries'] == previous.get('hltb_entries'):
                 record['hltb_entries'] = previous['hltb_entries']
             record = dict(previous, **record)
-            if has_no_series(record.get('series')):
-                record['series'] = 'Без серии'
+            record['series'] = normalize_series(record.get('series'))
             artwork_urls={record.get('image'),*(cover.get('url') for cover in record.get('custom_covers',{}).values())}
             if record.get('thumbnail_crop') and record['thumbnail_crop']['image'] not in artwork_urls:
                 record['thumbnail_crop'] = None
             record['added_at'] = previous['added_at']
             db.execute('UPDATE games SET source_id=?,payload=? WHERE id=?', (record.get('source_id') or None, json.dumps(record, ensure_ascii=False), gid))
         else:
-            if has_no_series(record.get('series')):
-                record['series'] = 'Без серии'
+            record['series'] = normalize_series(record.get('series'))
             if not record.get('added_at'):
                 record['added_at'] = datetime.now(timezone.utc).isoformat()
             record.setdefault('platform', 'Пока неизвестно')
@@ -1125,6 +1170,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             files = {'/library-features.js':'library-features.js','/rutracker-icon.png':'rutracker-icon.png','/i18n.js':'i18n.js','/desktop.js':'desktop.js','/app-icon.png':'app-icon.png','/app-icon.ico':'app-icon.ico','/favicon.ico':'app-icon.ico','/': 'index.html', '/app.js': 'app.js', '/enhancements.js': 'enhancements.js', '/thumbnail.js': 'thumbnail.js', '/style.css': 'style.css'}
             files['/themes.js'] = 'themes.js'
+            files['/library-navigation.js'] = 'library-navigation.js'
             files['/updates.js'] = 'updates.js'
             files['/statistics.js'] = 'statistics.js'
             files['/merge-games.js'] = 'merge-games.js'

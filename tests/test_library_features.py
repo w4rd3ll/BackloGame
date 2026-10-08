@@ -31,16 +31,33 @@ class LibraryFeaturesTests(unittest.TestCase):
             time.sleep(.01)
         self.fail('Job did not finish')
     def test_series_default_and_partial_edits(self):
-        for value in (None, '', '   ', '-', '; - ;'):
+        for value in (None, '', '   ', 'Без серии', '; Без серии ;'):
             game=server.save_game(dict(title='Default series', **({'series':value} if value is not None else {})))
-            self.assertEqual(game['series'],'Без серии')
+            self.assertEqual(game['series'],'')
             with server.connection() as db:
-                self.assertEqual(json.loads(db.execute('SELECT payload FROM games WHERE id=?',(game['id'],)).fetchone()[0])['series'],'Без серии')
+                self.assertEqual(json.loads(db.execute('SELECT payload FROM games WHERE id=?',(game['id'],)).fetchone()[0])['series'],'')
         game=server.save_game({'title':'Portal','series':'Half-Life; Portal'})
         edited=server.save_game({'title':'Portal','notes':'Keep series'},game['id'])
         self.assertEqual(edited['series'],'Half-Life; Portal')
         cleared=server.save_game({'title':'Portal','series':''},game['id'])
-        self.assertEqual(cleared['series'],'Без серии')
+        self.assertEqual(cleared['series'],'')
+
+    def test_empty_series_migration_and_named_series(self):
+        old=server.save_game({'title':'Legacy','series':'Portal'})
+        with server.connection() as db:
+            payload=json.loads(db.execute('SELECT payload FROM games WHERE id=?',(old['id'],)).fetchone()[0])
+            payload['series']='Без серии; Portal'
+            db.execute('UPDATE games SET payload=? WHERE id=?',(json.dumps(payload),old['id']))
+            db.execute('DELETE FROM settings WHERE name=?',('empty_series_storage_v1',))
+        server.migrate_empty_series()
+        self.assertEqual(server.library()[0]['series'],'Portal')
+        self.assertTrue(server.backup_files())
+        for name in ('A','-','Без серии; A'):
+            game=server.save_game({'title':'Named','series':name})
+            self.assertEqual(game['series'],'A' if name=='Без серии; A' else name)
+            self.assertFalse(server.has_no_series(game['series']))
+        server.migrate_empty_series()
+        self.assertEqual(server.library()[-2]['series'],'-')
 
     def test_completed_date_default_and_validation(self):
         g=server.save_game({'title':'Test','status':'Пройдено'})
@@ -124,6 +141,28 @@ class LibraryFeaturesTests(unittest.TestCase):
         self.assertEqual(saved[0]['notes'],'keep me')
         self.assertEqual(saved[0]['status'],'Играю')
         self.assertEqual(saved[0]['tags'],'Steam')
+    def test_saved_collections_round_trip_and_backup(self):
+        collection={'id':'test','name':'  PC backlog  ','state':{'platformFilter':'PC','librarySearch':'rat -portal','status':'Бэклог','sort':'title','direction':1,'view':'compact','unknownRelease':True}}
+        validated=server.validate_settings({'saved_collections':[collection]})
+        self.assertEqual(validated['saved_collections'][0]['name'],'PC backlog')
+        self.assertEqual(validated['saved_collections'][0]['state']['seriesFilter'],'')
+        with server.connection() as db:
+            db.execute('INSERT OR REPLACE INTO settings(name,value) VALUES (?,?)',('saved_collections',json.dumps(validated['saved_collections'])))
+        self.assertEqual(server.settings()['saved_collections'],validated['saved_collections'])
+        server.init_db()
+        self.assertEqual(server.settings()['saved_collections'],validated['saved_collections'])
+        backup=server.create_backup()
+        import sqlite3, zipfile
+        with zipfile.ZipFile(self.data/'backups'/backup) as archive:
+            dbfile=self.data/'saved-collections-test.sqlite3'
+            dbfile.write_bytes(archive.read('library.sqlite3'))
+        from contextlib import closing
+        with closing(sqlite3.connect(dbfile)) as db:
+            stored=json.loads(db.execute("SELECT value FROM settings WHERE name='saved_collections'").fetchone()[0])
+        self.assertEqual(stored,validated['saved_collections'])
+        for bad in (None, [collection]*101, [collection,collection], [{**collection,'name':' '}], [{**collection,'state':{**collection['state'],'direction':True}}], [{**collection,'state':{**collection['state'],'librarySearch':123}}], [{**collection,'state':{**collection['state'],'sort':[]}}]):
+            with self.assertRaises(ValueError):server.validate_settings({'saved_collections':bad})
+        self.assertEqual(server.validate_settings({'saved_collections':[]}),{'saved_collections':[]})
     def test_category_sort_and_view_round_trip(self):
         sorts={'favorites':{'field':'title','direction':1,'view':'compact'},'Пройдено':{'field':'completed_at','direction':-1,'view':'list'}}
         result=server.validate_settings({'category_sorts':sorts})

@@ -1,5 +1,33 @@
 'use strict';
 const $ = id => document.getElementById(id);
+function wireDialogBackdrop(dialog, close) {
+  let pressedOutside = false;
+  const outside = event => {
+    const r = dialog.getBoundingClientRect();
+    return event.target === dialog && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom);
+  };
+  dialog.onpointerdown = event => { pressedOutside = event.button === 0 && outside(event); };
+  dialog.onpointercancel = () => { pressedOutside = false; };
+  dialog.onclick = event => {
+    const dismiss = pressedOutside && event.button === 0 && outside(event);
+    pressedOutside = false;
+    if (dismiss) close();
+  };
+}
+const librarySearchCache = new WeakMap();
+function normalizeLibrarySearch(value) {
+  return String(value || '').normalize('NFKD').toLocaleLowerCase().replace(/ё/g,'е').replace(/[\u0300-\u036f]/g,'').replace(/[’‘`']/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+}
+function librarySearchTerms(query) {
+  return [...String(query).matchAll(/(-?)"([^"]+)"|(-?)([^\s"]+)/g)].map(m=>({exclude:!!(m[1]||m[3]),value:normalizeLibrarySearch(m[2]||m[4])})).filter(term=>term.value);
+}
+function matchesLibrarySearch(game, terms) {
+  const raw = [game.title,game.original_title,game.notes,game.tags,game.series,game.platform,game.genre,game.developer].join(' ');
+  let entry = librarySearchCache.get(game);
+  if (!entry || entry.raw !== raw) { entry={raw,text:normalizeLibrarySearch(raw)}; librarySearchCache.set(game,entry); }
+  return terms.every(term=>term.exclude ? !entry.text.includes(term.value) : entry.text.includes(term.value));
+}
+
 let statuses = ['Хочу пройти', 'Играю', 'Перепрохожу', 'Пройдено', 'Отложено', 'Брошено'];
 const icons = ['◈', '◷', '▷', '✓', 'Ⅱ', '×'];
 let games = [], token = '', selectedId = null, statusFilter = '', direction = -1, viewMode = 'cards';
@@ -35,7 +63,7 @@ const parts = value => String(value || '').split(',').map(x => x.trim()).filter(
 const seriesParts = value => [...new Set(String(value || '').split(';').map(x => x.trim()).filter(Boolean))];
 const libraryCollator = new Intl.Collator('ru',{numeric:true,sensitivity:'base'});
 const libraryTitleCollator = new Intl.Collator('en',{numeric:true,sensitivity:'base'});
-const hasNoSeries = value => !seriesParts(value).some(series => series !== '-' && series !== 'Без серии');
+const hasNoSeries = value => !seriesParts(value).some(series => series !== 'Без серии');
 function descriptionPreview(text) {
   if(text.length<=420)return text;
   const paragraph=text.split(/\n\s*\n/)[0].trim();
@@ -86,6 +114,7 @@ function resourceButtons(game) {
 }
 function fillOptions(id, values, title, last = '') {
   const select = $(id), previous = select.value;
+  if(previous && previous!==last && !values.includes(previous))values=[...values,previous];
   select.innerHTML = `<option value="">${title}</option>` + [...new Set(values.filter(Boolean))].sort((a,b) => a.localeCompare(b,'ru')).map(x => `<option value="${e(x)}">${e(id==='platformFilter'?displayValue(x):x)}</option>`).join('');
   if(last)select.innerHTML+=`<option value="${e(last)}">${e(displayValue(last))}</option>`;
   select.value = previous;
@@ -94,7 +123,7 @@ function rebuildOptions() {
   $('platformOptions').innerHTML = availablePlatforms().map(p=>`<option value="${e(p)}"></option>`).join('');
   fillOptions('platformFilter', games.map(g => g.platform || 'Пока неизвестно'), t("Все платформы"));
   fillOptions('genreFilter', games.flatMap(g => parts(g.genre)), t("Все жанры"));
-  fillOptions('seriesFilter', games.flatMap(g => seriesParts(g.series)).filter(series=>series!=='-'&&series!=='Без серии'), t("Все серии"), 'Без серии');
+  fillOptions('seriesFilter', games.flatMap(g => seriesParts(g.series)).filter(series=>series!=='Без серии'), t("Все серии"), 'Без серии');
   fillOptions('tagFilter', games.flatMap(g => parts(g.tags)), t("Все теги"));
 }
 function dateBound(value, upper = false) {
@@ -104,11 +133,11 @@ function dateBound(value, upper = false) {
   return value;
 }
 function filteredGames() {
-  const query = $('librarySearch').value.trim().toLocaleLowerCase();
+  const query = librarySearchTerms($('librarySearch').value);
   const from = dateBound($('releaseFrom').value), to = dateBound($('releaseTo').value, true);
   const result = games.filter(g => {
     if (statusFilter === 'favorites' ? !g.favorite : statusFilter === 'not-favorites' ? !!g.favorite : statusFilter && g.status !== statusFilter) return false;
-    if (query && ![g.title,g.notes,g.tags,g.series,g.platform,g.genre].join(' ').toLocaleLowerCase().includes(query)) return false;
+    if (query.length && !matchesLibrarySearch(g,query)) return false;
     if ($('platformFilter').value && (g.platform || 'Пока неизвестно') !== $('platformFilter').value) return false;
     if ($('genreFilter').value && !parts(g.genre).includes($('genreFilter').value)) return false;
     if ($('seriesFilter').value && ($('seriesFilter').value==='Без серии'?!hasNoSeries(g.series):!seriesParts(g.series).includes($('seriesFilter').value))) return false;
@@ -204,8 +233,7 @@ function renderInspector() {
 function exists(item) { return games.some(g=>(item.source_id && g.source_id===item.source_id)||(item.qid && g.qid===item.qid)); }
 function openAdd() { if(dirty){if(!confirm(t("Изменения ещё не сохранены. Отменить их и открыть добавление игры?")))return;dirty=false;renderInspector();} $('addDialog').showModal(); $('catalogQuery').focus(); }
 $('addButton').onclick=openAdd;$('emptyAdd').onclick=openAdd;$('closeDialog').onclick=()=>{$('addDialog').close();catalogSerial++;};
-$('addDialog').addEventListener('pointerdown',event=>{const box=$('addDialog').getBoundingClientRect();$('addDialog').backdropPress=event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom;});
-$('addDialog').addEventListener('click',event=>{const box=$('addDialog').getBoundingClientRect();const outside=event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom;if(outside&&$('addDialog').backdropPress){$('addDialog').close();catalogSerial++;}});
+wireDialogBackdrop($('addDialog'),()=>{$('addDialog').close();catalogSerial++;});
 $('addDialog').addEventListener('cancel',()=>{catalogSerial++;});
 $('catalogForm').onsubmit=async event=>{event.preventDefault();const serial=++catalogSerial;await busy(event.submitter,async()=>{$('catalogResults').innerHTML=`<p class="loading">${t("Ищем в каталоге…")}</p>`;try{const result=await api('/api/search?q='+encodeURIComponent($('catalogQuery').value)+'&provider='+$('provider').value+'&include_extras='+Number($('includeSteamExtras').checked));if(serial!==catalogSerial)return;$('catalogResults').innerHTML=result.items.length?result.items.map((g,i)=>`<div class="catalogRow">${g.image?`<img src="${e(g.image)}" alt="" loading="lazy" draggable="false" referrerpolicy="no-referrer">`:''}<div class="catalogText"><strong>${e(g.title)}</strong><small class="catalogKind">${e(providerLabel(g.provider))}${g.release_date?' · '+e(g.release_date):''}</small>${g.description?`<p>${e(g.description)}</p>`:''}${exists(g)?`<small>${t("Уже в библиотеке")}</small>`:''}</div><button data-index="${i}" ${exists(g)?'disabled':''}>${t("Добавить")}</button></div>`).join(''):`<p class="hint">${t("Ничего не найдено. Попробуй другое название, другой каталог или ручное добавление.")}</p>`;wireImages($('catalogResults'));$('catalogResults').querySelectorAll('button').forEach(b=>b.onclick=()=>busy(b,async()=>{const item=result.items[Number(b.dataset.index)];const enriched=await api('/api/details?source='+encodeURIComponent(item.source_id));const saved=await api('/api/save',{game:{...item,...Object.fromEntries(Object.entries(enriched).filter(([k,v])=>v!==''&&v!=null))}});await reload();selectGame(saved.id,true);b.textContent=t("Добавлено");toast(t(enriched.metadata_warning) || t("Добавлено в библиотеку."));b.dataset.added='yes';}).then(()=>{if(b.dataset.added){b.disabled=true;b.textContent=t("Добавлено");}}));}catch(err){if(serial===catalogSerial)$('catalogResults').innerHTML=`<p class="warning">${e(err.message)}</p>`;throw err;}});};
 $('manualForm').onsubmit=async event=>{event.preventDefault();await busy(event.submitter,async()=>{const saved=await api('/api/save',{game:{title:$('manualTitle').value,platform:$('manualPlatform').value||'Пока неизвестно'}});await reload();selectGame(saved.id,true);$('manualTitle').value='';$('addDialog').close();toast(t("Игра добавлена"));});};
@@ -266,7 +294,7 @@ function renderSettings() {
 }
 $('settingsButton').onclick=()=>{renderSettings();$('settingsDialog').showModal();};
 $('closeSettings').onclick=()=>$('settingsDialog').close();
-$('settingsDialog').addEventListener('click',event=>{if(event.target!==$('settingsDialog'))return;const rect=$('settingsDialog').getBoundingClientRect();if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)$('settingsDialog').close();});
+wireDialogBackdrop($('settingsDialog'),()=>$('settingsDialog').close());
 
 let coversUpdating=false;
 function updateDisplayedCover(game){

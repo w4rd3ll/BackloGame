@@ -29,7 +29,7 @@ def preview(store, data):
         merged[field] = (separator+' ').join(dict.fromkeys(x.strip() for g in selected for x in (g.get(field) or '').split(separator) if x.strip()))
     series=[x.strip() for x in merged['series'].split(';') if x.strip()]
     real=[x for x in series if not store.has_no_series(x)]
-    merged['series']='; '.join(real) if real else 'Без серии'
+    merged['series']='; '.join(real) if real else ''
     merged['notes']='\n\n'.join(dict.fromkeys(g['notes'] for g in selected if g.get('notes')))
     merged['favorite']=any(g.get('favorite') for g in selected)
     merged['custom_covers']={}

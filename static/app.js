@@ -34,6 +34,7 @@ const localDay = value => { const d = new Date(value); return `${d.getFullYear()
 const parts = value => String(value || '').split(',').map(x => x.trim()).filter(Boolean);
 const seriesParts = value => [...new Set(String(value || '').split(';').map(x => x.trim()).filter(Boolean))];
 const libraryCollator = new Intl.Collator('ru',{numeric:true,sensitivity:'base'});
+const libraryTitleCollator = new Intl.Collator('en',{numeric:true,sensitivity:'base'});
 const hasNoSeries = value => !seriesParts(value).some(series => series !== '-' && series !== 'Без серии');
 function descriptionPreview(text) {
   if(text.length<=420)return text;
@@ -128,8 +129,8 @@ function filteredGames() {
     if (field === 'priority') { const rank = {'Низкий':1,'Обычный':2,'Высокий':3}; av = rank[av || 'Обычный']; bv = rank[bv || 'Обычный']; }
     if (field === 'status') { av = statuses.indexOf(av) + 1; bv = statuses.indexOf(bv) + 1; }
     if (!av && bv) return 1; if (av && !bv) return -1;
-    const comparison = typeof av === 'number' ? av - bv : libraryCollator.compare(String(av),String(bv));
-    return comparison * direction || a.title.localeCompare(b.title,'ru');
+    const comparison = typeof av === 'number' ? av - bv : (field==='title'?libraryTitleCollator:libraryCollator).compare(String(av),String(bv));
+    return comparison * direction || libraryTitleCollator.compare(a.title,b.title);
   });
   return result;
 }

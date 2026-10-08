@@ -66,3 +66,5 @@ Only the games endpoint and a fixed set of fields are queried; callers cannot
 supply APICalypse, an upstream URL, headers or an access token.
 
 IGDB API documentation: https://api-docs.igdb.com/
+
+Search queries accept a trailing release year (for example `Assassin's Creed 2007` or `Assassin's Creed (2007)`). Exact names are queried separately and ranked first; broader matching examines up to 100 candidates. Search responses contain only list fields and are bounded to 12,000 UTF-8 bytes. Full metadata is loaded with `/game` after selection.

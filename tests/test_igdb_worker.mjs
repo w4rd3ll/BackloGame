@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import worker from '../deploy/cloudflare-steam/worker.mjs';
-import {normalizeGame} from '../deploy/cloudflare-steam/igdb.mjs';
+import {normalizeGame,searchTerms,searchQueries,rankSearch} from '../deploy/cloudflare-steam/igdb.mjs';
 const ctx={waitUntil:()=>{}},env={IGDB_CLIENT_ID:'fixture-client',IGDB_CLIENT_SECRET:'fixture-secret',IGDB_RATE_LIMIT:{limit:async()=>({success:true})}};
 const req=path=>new Request('https://example.workers.dev/v1/igdb/'+path);
 test('normalizes game series, developers, date and fixed image hosts',()=>{
@@ -23,7 +23,7 @@ test('obtains token through POST, queries only games and never returns credentia
     const result=await worker.fetch(req('search?q=Portal'),env,ctx),raw=await result.text();
     assert.equal(result.status,200);assert.equal(JSON.parse(raw).items[0].source_id,'igdb:1');
     assert.equal(calls[0].url,'https://id.twitch.tv/oauth2/token');assert.equal(calls[0].options.method,'POST');
-    assert.equal(calls[1].url,'https://api.igdb.com/v4/games');assert.ok(calls[1].options.body.startsWith('search "Portal";'));
+    assert.equal(calls[1].url,'https://api.igdb.com/v4/games');assert.ok(calls[1].options.body.includes('where name ~ "Portal";'));assert.ok(calls[2].options.body.startsWith('search "Portal";'));assert.ok(calls[2].options.body.includes('limit 100;'));
     for(const value of ['fixture-secret','fixture-client','fixture-access-token'])assert.equal(raw.includes(value),false);
   }finally{globalThis.fetch=original;}
 });
@@ -40,4 +40,29 @@ test('expired upstream token is renewed once and game request is retried',async(
   };
   try{const response=await worker.fetch(req('game?id=71'),env,ctx);assert.equal(response.status,200);assert.equal(gameCalls,2);assert.equal(tokenCalls,1);}
   finally{globalThis.fetch=original;}
+});
+
+test('exact original sorts before sequels and duplicate records are removed',()=>{
+ const result=rankSearch([{id:2,name:"Assassin's Creed II"},{id:1,name:"Assassin's Creed",first_release_date:1194912000},{id:1,name:"Assassin's Creed",first_release_date:1194912000}],"Assassin's Creed");
+ assert.equal(result.length,2);assert.equal(result[0].source_id,'igdb:1');
+});
+test('year suffix filters release dates and is excluded from title search',()=>{
+ for(const query of ["Assassin's Creed 2007","Assassin's Creed (2007)"]){
+  assert.deepEqual(searchTerms(query),{title:"Assassin's Creed",year:2007});
+  const queries=searchQueries(query);assert(queries[1].startsWith('search "Assassin\'s Creed";'));
+  assert(queries.every(q=>q.includes('first_release_date >=')));
+  const rows=rankSearch([{id:1,name:"Assassin's Creed",first_release_date:1194912000},{id:2,name:"Assassin's Creed II",first_release_date:1258416000}],query);
+  assert.equal(rows.length,1);assert.equal(rows[0].source_id,'igdb:1');
+ }
+ assert.deepEqual(searchTerms('Cyberpunk 2077'),{title:'Cyberpunk 2077',year:null});
+});
+
+test('expanded search keeps original first within a bounded lightweight response',async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async(url,options)=>url.includes('oauth2')?Response.json({access_token:'fixture-token',expires_in:3600}):Response.json(options.body.includes('where name ~')?[{id:1,name:'Example',first_release_date:1194912000}]:Array.from({length:100},(_,i)=>({id:i+2,name:'Example '+i+' '+'.'.repeat(90),summary:'Long metadata must not enter search results'.repeat(100)})));
+ try{
+  const response=await worker.fetch(req('search?q=Example'),env,ctx),raw=await response.text(),items=JSON.parse(raw).items;
+  assert.equal(response.status,200);assert.equal(items[0].source_id,'igdb:1');assert(items.length>20);
+  assert(new TextEncoder().encode(raw).length<=12000);assert(!raw.includes('Long metadata'));
+ }finally{globalThis.fetch=original;}
 });

@@ -1,6 +1,7 @@
 // Fixed, read-only IGDB queries. Credentials are Cloudflare Secrets only.
 let tokenState=null,tokenPending=null,nextRequest=0;
 const fields='id,name,slug,summary,cover.image_id,artworks.image_id,screenshots.image_id,genres.name,involved_companies.company.name,involved_companies.developer,platforms.name,first_release_date,collections.name,franchises.name';
+const searchFields='id,name,slug,cover.image_id,first_release_date';
 const text=(value,max=300)=>typeof value==='string'?value.slice(0,max):'';
 const names=rows=>[...new Set((Array.isArray(rows)?rows:[]).map(row=>text(row?.name)).filter(Boolean))];
 const image=(row,size)=>/^[a-zA-Z0-9_]{1,100}$/.test(row?.image_id||'')?'https://images.igdb.com/igdb/image/upload/t_'+size+'/'+row.image_id+'.jpg':'';
@@ -39,6 +40,26 @@ async function games(env,query,retry=true){
   try{return await jsonRequest('https://api.igdb.com/v4/games',{method:'POST',headers:{'Client-ID':env.IGDB_CLIENT_ID,Authorization:'Bearer '+token,Accept:'application/json'},body:query});}
   catch(error){if(error.status===401&&retry){tokenState=null;return games(env,query,false);}throw error;}
 }
+export function searchTerms(value){
+  let title=value.trim().replace(/[‘’ʼ]/g,"'");
+  const match=title.match(/\s+(?:\(((?:19|20)\d{2})\)|((?:19|20)\d{2}))$/);
+  let year=null;
+  if(match){const candidate=Number(match[1]||match[2]);if(candidate<=new Date().getUTCFullYear()+5){year=candidate;title=title.slice(0,match.index).trim();}}
+  if(!title){title=value.trim();year=null;}
+  return {title,year};
+}
+export function searchQueries(value){
+  const {title,year}=searchTerms(value),date=year?' & first_release_date >= '+Date.UTC(year,0,1)/1000+' & first_release_date < '+Date.UTC(year+1,0,1)/1000:'';
+  return ['fields '+searchFields+'; where name ~ '+JSON.stringify(title)+date+'; limit 20;',
+    'search '+JSON.stringify(title)+'; fields '+searchFields+'; '+(year?'where '+date.slice(3)+'; ':'')+'limit 100;'];
+}
+export function rankSearch(rows,value){
+  const {title,year}=searchTerms(value),key=name=>name.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,''),target=key(title);
+  const unique=new Map();
+  for(const row of rows){const game=normalizeGame(row);if(game&&(!year||game.release_date.startsWith(String(year))))unique.set(game.source_id,game);}
+  const rank=game=>{const name=key(game.title);return name===target?0:name.startsWith(target)?1:2;};
+  return [...unique.values()].sort((a,b)=>rank(a)-rank(b)).slice(0,120);
+}
 export async function igdbRoute(request,env,ctx,respond){
   const url=new URL(request.url),search=url.pathname==='/v1/igdb/search';
   if(!search&&url.pathname!=='/v1/igdb/game')return respond({error:'Not found'},404);
@@ -50,12 +71,28 @@ export async function igdbRoute(request,env,ctx,respond){
     const limited=await env.IGDB_RATE_LIMIT.limit({key:request.headers.get('CF-Connecting-IP')||'unknown'});
     if(!limited.success)return respond({error:'Too many IGDB requests. Try again shortly.'},429);
     const canonical=search?value.trim().toLowerCase():String(Number(value));
-    const cacheKey=new Request(url.origin+'/cached-igdb-'+(search?'search?q=':'game?id=')+encodeURIComponent(canonical));
+    const cacheKey=new Request(url.origin+'/cached-igdb-v4-'+(search?'search?q=':'game?id=')+encodeURIComponent(canonical));
     const cache=globalThis.caches?.default,cached=cache?await cache.match(cacheKey):null;
     if(cached)return respond(await cached.json());
-    const query=search?'search '+JSON.stringify(value.trim())+'; fields '+fields+'; limit 20;':'fields '+fields+'; where id = '+Number(value)+'; limit 1;';
-    const rows=await games(env,query);if(!Array.isArray(rows))throw Error('Invalid IGDB response');
-    const items=rows.slice(0,20).map(normalizeGame).filter(Boolean),body=search?{items}:{game:items[0]||null};
+    let body;
+    if(search){
+      const rows=[];
+      for(const query of searchQueries(value)){
+        const result=await games(env,query);if(!Array.isArray(result))throw Error('Invalid IGDB response');
+        rows.push(...result);
+      }
+      const items=[];
+      for(const {source_id,title,provider,image,release_date} of rankSearch(rows,value)){
+        const candidate={source_id,title,provider,image,release_date};
+        if(new TextEncoder().encode(JSON.stringify({items:[...items,candidate]})).length>12000)break;
+        items.push(candidate);
+      }
+      body={items};
+    }else{
+      const rows=await games(env,'fields '+fields+'; where id = '+Number(value)+'; limit 1;');
+      if(!Array.isArray(rows))throw Error('Invalid IGDB response');
+      body={game:rows.slice(0,1).map(normalizeGame).filter(Boolean)[0]||null};
+    }
     if(!search&&!body.game)return respond({error:'IGDB game not found'},404);
     if(cache)ctx.waitUntil(cache.put(cacheKey,new Response(JSON.stringify(body),{headers:{'Content-Type':'application/json','Cache-Control':'public,max-age=1800'}})));
     return respond(body);

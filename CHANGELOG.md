@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.2 - 2026-10-08
+
+- Sort game titles with Latin names before Cyrillic names while retaining natural numeric ordering.
+- Compact the metadata comparison header and status spacing; remove redundant text and keep the apply controls visible while the table scrolls.
+- Find exact IGDB game names separately and prioritize them over sequels and bundles. Accept release-year suffixes, expand the candidate search and keep list responses lightweight.
+
 ## 0.6.1 - 2026-10-08
 
 - Remove cover comparison from the metadata update table; artwork selection remains in its dedicated catalog dialog.

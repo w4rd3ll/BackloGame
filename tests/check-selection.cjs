@@ -14,3 +14,6 @@ ctx.selectGame(null);assert.deepEqual(rows.map(r=>r.selected),[false,false]);ass
 const titles=['DOOM 10','DOOM 2','Дум','doom 1','Alan Wake','Алан','DOOM 02'];
 assert.deepEqual([...titles].sort(new Intl.Collator('ru',{numeric:true,sensitivity:'base'}).compare),[...titles].sort((a,b)=>a.localeCompare(b,'ru',{numeric:true,sensitivity:'base'})));
 console.log('Selection preserves list nodes, edit guard, panel state and sorting: OK');
+
+vm.runInContext(source.match(/const libraryTitleCollator = .*;/)[0],ctx);
+assert.deepEqual(JSON.parse(vm.runInContext("JSON.stringify(['DOOM 10','DOOM 2','Alan Wake','"+String.fromCodePoint(1040,1083,1072,1085)+"','"+String.fromCodePoint(1071,1088,1086,1089,1090,1100)+"'].sort(libraryTitleCollator.compare))",ctx)),['Alan Wake','DOOM 2','DOOM 10',String.fromCodePoint(1040,1083,1072,1085),String.fromCodePoint(1071,1088,1086,1089,1090,1100)]);

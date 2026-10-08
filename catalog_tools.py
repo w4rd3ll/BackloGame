@@ -1,5 +1,36 @@
 """Catalog enrichment without replacing a game's progress or source identity."""
 import re
+import copy
+import secrets
+import threading
+import time
+
+SNAPSHOTS = {}
+SNAPSHOT_LOCK = threading.Lock()
+
+
+def preview_details(store, source):
+    """Keep exactly the trusted catalog values displayed in the comparison."""
+    game=store.details(source)
+    token=secrets.token_urlsafe(24)
+    now=time.monotonic()
+    with SNAPSHOT_LOCK:
+        for key,(expires,*_) in list(SNAPSHOTS.items()):
+            if expires<=now:SNAPSHOTS.pop(key,None)
+        while len(SNAPSHOTS)>=100:SNAPSHOTS.pop(next(iter(SNAPSHOTS)))
+        SNAPSHOTS[token]=(now+1800,str(store.DB),source,copy.deepcopy(game))
+    return dict(game,_catalog_snapshot=token)
+
+
+def selected_details(store, source, snapshots):
+    if source not in snapshots:return store.details(source)
+    token=snapshots[source]
+    if not isinstance(token,str):raise ValueError('Invalid catalog snapshot')
+    with SNAPSHOT_LOCK:
+        row=SNAPSHOTS.get(token)
+        if not row or row[0]<=time.monotonic() or row[1]!=str(store.DB) or row[2]!=source:
+            raise ValueError('The catalog preview expired. Search again.')
+        return copy.deepcopy(row[3])
 
 
 def key(store, title):
@@ -60,6 +91,8 @@ def apply(store,data):
     orientation=data.get('orientation')
     if orientation is not None and (mode!='cover' or orientation not in ('portrait','landscape')):raise ValueError('Invalid artwork orientation')
     fresh=find_series(store,old) if mode=='series' else store.details(data.get('source','')) if mode=='cover' else enriched_details(store,data.get('source',''))
+    if mode=='cover' and orientation=='landscape' and fresh.get('landscape_image'):
+        fresh=dict(fresh,image=fresh['landscape_image'])
     if mode=='series' and not fresh.get('series'):return {'game':old,'changed':False}
     patch={'title':old['title']}
     if mode in ('metadata','cover'):
@@ -96,9 +129,11 @@ def apply_fields(store,data):
     allowed={'title','description','genre','developer','available_platforms','release_date','series','image'}
     if data.get('mode','metadata')!='metadata' or not isinstance(fields,dict) or not fields or set(fields)-allowed:
         raise ValueError('Invalid catalog field selection')
-    if any(not isinstance(source,str) or not re.fullmatch(r'(?:steam|metacritic|wiki):[^\s]{1,500}',source) for source in fields.values()):
+    if any(not isinstance(source,str) or not re.fullmatch(r'(?:steam|metacritic|wiki|igdb):[^\s]{1,500}',source) for source in fields.values()):
         raise ValueError('Invalid catalog source')
-    fresh={source:store.details(source) for source in dict.fromkeys(fields.values())}
+    snapshots=data.get('snapshots',{})
+    if not isinstance(snapshots,dict):raise ValueError('Invalid catalog snapshot')
+    fresh={source:selected_details(store,source,snapshots) for source in dict.fromkeys(fields.values())}
     patch={'title':old['title']}
     for field,source in fields.items():
         item=fresh[source]
@@ -135,15 +170,15 @@ def automatic(store,data):
     provider=data.get('provider','metacritic')
     if provider=='auto':
         error=None
-        for candidate in ('steam','metacritic','wikipedia'):
+        for candidate in ('steam','igdb','metacritic','wikipedia'):
             try:
                 result=automatic(store,dict(data,provider=candidate))
                 if result['changed']:return result
             except (OSError,ValueError,KeyError) as exc:error=exc
         if error:raise ValueError('Каталоги не вернули доступную обложку. Попробуй выбрать вручную.')
         return {'game':old,'changed':False}
-    if provider not in ('steam','metacritic','wikipedia'):raise ValueError('Неизвестный каталог игр')
-    prefix={'steam':'steam:','metacritic':'metacritic:','wikipedia':'wiki:'}[provider]
+    if provider not in ('steam','metacritic','wikipedia','igdb'):raise ValueError('Неизвестный каталог игр')
+    prefix={'steam':'steam:','metacritic':'metacritic:','wikipedia':'wiki:','igdb':'igdb:'}[provider]
     known=[source for source in [old.get('source_id'),*old.get('source_aliases',[])] if source and source.startswith(prefix)]
     sources=known[:1]
     if not sources:

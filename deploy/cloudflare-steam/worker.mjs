@@ -1,4 +1,5 @@
-// Public Steam libraries only. Store STEAM_API_KEY as a Cloudflare Secret.
+// Public Steam libraries and read-only IGDB metadata. Credentials are Cloudflare Secrets.
+import {igdbRoute} from './igdb.mjs';
 const respond = (body,status=200) => new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 
 export function profileName(value) {
@@ -36,6 +37,7 @@ export default {
   async fetch(request,env,ctx) {
     const url=new URL(request.url);
     if(request.method!=='GET')return respond({error:'Method not allowed'},405);
+    if(url.pathname.startsWith('/v1/igdb/'))return igdbRoute(request,env,ctx,respond);
     const configured=/^[a-fA-F0-9]{32}$/.test(env.STEAM_API_KEY||'');
     if(url.pathname==='/health')return respond({app:'backlogame-steam-relay',configured},configured?200:503);
     if(url.pathname!=='/v1/steam/library')return respond({error:'Not found'},404);

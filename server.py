@@ -40,6 +40,7 @@ DEFAULT_SETTINGS['card_details'] = 'both'
 DEFAULT_SETTINGS['cover_max_mb'] = 64
 DEFAULT_SETTINGS['steamgriddb_filters'] = dict(steamgriddb.FILTER_DEFAULTS)
 DEFAULT_SETTINGS['auto_check_updates'] = True
+DEFAULT_SETTINGS['catalog_sources'] = ['steam','igdb','metacritic','wikipedia']
 DEFAULT_SETTINGS['steam_relay_url'] = 'https://backlogame-steam.w4rdell.workers.dev'
 CACHE = {}
 CACHE_LOCK = threading.Lock()
@@ -261,8 +262,11 @@ def search_games(query, provider='steam', include_extras=False):
     query = query.strip()[:1000]
     if not query:
         return []
-    if provider not in ('steam','wikipedia','metacritic'):
+    if provider not in ('steam','wikipedia','metacritic','igdb'):
         raise ValueError('Неизвестный каталог игр')
+    if provider=='igdb':
+        import igdb
+        return igdb.search(sys.modules[__name__],query)
     appid = steam_app_id(query)
     if appid:
         return [steam_result(appid)]
@@ -344,6 +348,9 @@ def enrich_wikidata(game):
 
 def details(source_id):
     game = {'source_id': source_id}
+    if source_id.startswith('igdb:'):
+        import igdb
+        return igdb.details(sys.modules[__name__],source_id)
     if source_id.startswith('metacritic:'):
         return metacritic_details(source_id.split(':', 1)[1])
     if re.fullmatch(r'steam:\d+', source_id):
@@ -513,6 +520,11 @@ def validate_settings(data, allowed_categories=None):
     if not isinstance(data, dict):
         raise ValueError('Некорректные настройки')
     result = {}
+    if 'catalog_sources' in data:
+        sources=data['catalog_sources']
+        if not isinstance(sources,list) or not sources or any(not isinstance(x,str) or x not in DEFAULT_SETTINGS['catalog_sources'] for x in sources):
+            raise ValueError('Выбери хотя бы один каталог')
+        result['catalog_sources']=list(dict.fromkeys(sources))
     if 'cover_max_mb' in data:
         if type(data['cover_max_mb']) is not int or data['cover_max_mb'] not in (12,32,64,128):
             raise ValueError('Invalid cover size limit')
@@ -923,7 +935,7 @@ def create_backup(automatic=False):
                     images = {image for card in cards for image in [card.get('image_local') or '',*(row.get('local') or '' for row in card.get('custom_covers',{}).values())]}
                 for image in sorted(images):
                     if re.fullmatch(r'/covers/[a-f0-9]{64}\.(?:png|jpg|gif|webp)', image) and (DATA / image.lstrip('/')).is_file():
-                        archive.write(DATA / image.lstrip('/'), image.lstrip('/'))
+                        archive.write(DATA / image.lstrip('/'), image.lstrip('/'), compress_type=zipfile.ZIP_STORED)
             pending.replace(folder / name)
         finally:
             pending.unlink(missing_ok=True)
@@ -1094,9 +1106,9 @@ class Handler(BaseHTTPRequestHandler):
             if parts.path == '/api/search':
                 return self.reply({'items': search_games(args.get('q', [''])[0], args.get('provider', ['steam'])[0], args.get('include_extras', ['0'])[0] == '1')})
             if parts.path == '/api/details':
-                from catalog_tools import enriched_details
+                from catalog_tools import enriched_details, preview_details
                 source=args.get('source', [''])[0]
-                return self.reply(details(source) if args.get('raw',['0'])[0]=='1' else enriched_details(sys.modules[__name__],source))
+                return self.reply(preview_details(sys.modules[__name__],source) if args.get('raw',['0'])[0]=='1' else enriched_details(sys.modules[__name__],source))
             if parts.path == '/api/export':
                 return self.reply({'version': 1, 'games': library(), 'platforms': platform_names(), 'categories': category_names(), 'settings': settings()})
             if re.fullmatch(r'/covers/[a-f0-9]{64}\.(?:png|jpg|gif|webp)', parts.path):

@@ -9,7 +9,7 @@ async function openCatalogUpdate(game,mode='metadata',requestedProvider=null,ori
   if(mode==='metadata'){await openCatalogComparison(game);return;}
   const provider=requestedProvider||(steamSource(game)?'steam':game.source_id?.startsWith('wiki:')?'wikipedia':'metacritic');
   const session=++catalogUpdateSession;
-  catalogUpdateDialog.innerHTML=`<div class="dialogHead"><h2>${t(mode==='cover'?'Выбрать обложку из каталога':'Обновить сведения из каталога')}</h2><button id="closeCatalogUpdate" aria-label="${t('Закрыть')}">✕</button></div><p class="hint">${e(game.title)} · ${e(displayValue(game.platform))}</p><form id="catalogUpdateSearch"><input id="catalogUpdateQuery" value="${e(game.original_title||game.title)}" required maxlength="300" aria-label="${t('Название игры')}"><select id="catalogUpdateProvider" aria-label="${t('Источник')}"><option value="metacritic">Metacritic</option><option value="steam">Steam</option><option value="wikipedia">Wikipedia / Wikidata</option></select><button class="primary">${t('Найти')}</button></form><p class="hint">${t('Выбери соответствующую игру. Прогресс, даты прохождений, заметки и основная ссылка сохраняются.')}</p><div id="catalogUpdateResults"></div><div id="catalogUpdatePreview"></div>`;
+  catalogUpdateDialog.innerHTML=`<div class="dialogHead"><h2>${t(mode==='cover'?'Выбрать обложку из каталога':'Обновить сведения из каталога')}</h2><button id="closeCatalogUpdate" aria-label="${t('Закрыть')}">✕</button></div><p class="hint">${e(game.title)} · ${e(displayValue(game.platform))}</p><form id="catalogUpdateSearch"><input id="catalogUpdateQuery" value="${e(game.original_title||game.title)}" required maxlength="300" aria-label="${t('Название игры')}"><select id="catalogUpdateProvider" aria-label="${t('Источник')}"><option value="igdb">IGDB</option><option value="metacritic">Metacritic</option><option value="steam">Steam</option><option value="wikipedia">Wikipedia / Wikidata</option></select><button class="primary">${t('Найти')}</button></form><p class="hint">${t('Выбери соответствующую игру. Прогресс, даты прохождений, заметки и основная ссылка сохраняются.')}</p><div id="catalogUpdateResults"></div><div id="catalogUpdatePreview"></div>`;
   $('catalogUpdateProvider').value=provider;
   if(mode==='cover'){
     const option=document.createElement('option');option.value='steamgriddb';option.textContent='SteamGridDB';$('catalogUpdateProvider').prepend(option);
@@ -26,7 +26,7 @@ async function openCatalogUpdate(game,mode='metadata',requestedProvider=null,ori
       $('catalogUpdateResults').querySelectorAll('[data-update-candidate]').forEach(button=>button.onclick=()=>busy(button,async()=>{
         const selection=++serial,item=result.items[Number(button.dataset.updateCandidate)];$('catalogUpdatePreview').textContent=t('Загрузка…');
         try{
-          const fresh=await api('/api/details?source='+encodeURIComponent(item.source_id));if(selection!==serial||session!==catalogUpdateSession)return;
+          const fresh=await api('/api/details?source='+encodeURIComponent(item.source_id));if(selection!==serial||session!==catalogUpdateSession)return;if(mode==='cover'&&$('catalogCoverOrientation').value==='landscape'&&fresh.landscape_image)fresh.image=fresh.landscape_image;
           $('catalogUpdateResults').hidden=true;
           $('catalogUpdatePreview').innerHTML=`<button id="backCatalogResults" class="text">← ${t('Другой результат')}</button><div class="catalogSelected">${fresh.image?`<img src="${e(fresh.image)}" alt="" referrerpolicy="no-referrer">`:''}<h3>${e(fresh.title)}</h3>${mode==='metadata'?`<p class="description">${e(descriptionPreview(fresh.description||''))}</p><p>${t('Серии, через ;')}: ${e(game.series||fresh.series||t('Не указана'))}</p>`:''}<button id="applyCatalogUpdate" class="primary" ${mode==='cover'&&!fresh.image?'disabled':''}>${t(mode==='cover'?'Использовать обложку':'Применить сведения')}</button></div>`;
           $('backCatalogResults').onclick=()=>{$('catalogUpdateResults').hidden=false;$('catalogUpdatePreview').textContent='';};
@@ -43,17 +43,23 @@ async function openCatalogUpdate(game,mode='metadata',requestedProvider=null,ori
   catalogUpdateDialog.showModal();await search();
 }
 const catalogComparisonFields=[['title','Название'],['description','Описание'],['genre','Жанры, через запятую'],['developer','Разработчик'],['available_platforms','Доступные платформы'],['release_date','Дата выхода'],['series','Серии, через ;'],['image','Обложка']];
-function catalogComparisonProviderLabel(provider){return {steam:'Steam',metacritic:'Metacritic',wikipedia:'Wikipedia / Wikidata'}[provider]||provider;}
+function catalogComparisonProviderLabel(provider){return {steam:'Steam',metacritic:'Metacritic',wikipedia:'Wikipedia / Wikidata',igdb:'IGDB'}[provider]||provider;}
 function catalogFieldValue(game,field){return field==='release_date'?(game.release_date||game.release_label||''):field==='image'?(game.custom_covers?.portrait?.url||game.image||''):game[field]||'';}
 function catalogChosenFields(selected,states){
   return Object.fromEntries(Object.entries(selected).filter(([,provider])=>provider&&states[provider]?.game).map(([field,provider])=>[field,states[provider].source]));
 }
+const catalogAllProviders=['steam','igdb','metacritic','wikipedia'];
+function catalogEnabledProviders(value){
+  const selected=Array.isArray(value)?catalogAllProviders.filter(provider=>value.includes(provider)):[];
+  return selected.length?selected:[...catalogAllProviders];
+}
 async function openCatalogComparison(game){
-  const providers=['steam','metacritic','wikipedia'],session=++catalogUpdateSession;
-  const states=Object.fromEntries(providers.map(provider=>[provider,{items:[],game:null,source:'',loading:true,error:'',revision:0}]));
-  const selected={};let revision=0,applying=false;
+  let providers=catalogEnabledProviders(preferences.catalog_sources);
+  const session=++catalogUpdateSession;
+  const states=Object.fromEntries(catalogAllProviders.map(provider=>[provider,{items:[],game:null,source:'',loading:true,error:'',revision:0}]));
+  const selected={};let revision=0,applying=false,savingSources=false;
   catalogUpdateDialog.classList.add('catalogComparisonDialog');
-  catalogUpdateDialog.innerHTML=`<div class="dialogHead"><h2>${t('Обновить сведения из каталога')}</h2><button id="closeCatalogUpdate" aria-label="${t('Закрыть')}">✕</button></div><p class="hint">${e(game.title)} · ${e(displayValue(game.platform))}</p><form id="catalogUpdateSearch"><input id="catalogUpdateQuery" value="${e(game.original_title||game.title)}" required maxlength="300" aria-label="${t('Название игры')}"><button class="primary">${t('Найти во всех каталогах')}</button></form><p class="hint">${t('Выбери игру в каждом каталоге, затем отметь, какие сведения взять. Остальные поля сохранятся.')}</p><div id="catalogComparisonResults"></div><div class="catalogComparisonActions"><span id="catalogSelectionCount" class="hint" role="status"></span><button id="applyCatalogFields" class="primary" disabled>${t('Применить выбранное')}</button></div>`;
+  catalogUpdateDialog.innerHTML=`<div class="dialogHead"><h2>${t('Обновить сведения из каталога')}</h2><fieldset class="catalogSourceChoices"><legend>${t('Источники')}</legend>${catalogAllProviders.map(provider=>`<label><input type="checkbox" data-catalog-source="${provider}" ${providers.includes(provider)?'checked':''}>${e(catalogComparisonProviderLabel(provider))}</label>`).join('')}</fieldset><button id="closeCatalogUpdate" aria-label="${t('Закрыть')}">✕</button></div><p class="hint">${e(game.title)} · ${e(displayValue(game.platform))}</p><form id="catalogUpdateSearch"><input id="catalogUpdateQuery" value="${e(game.original_title||game.title)}" required maxlength="300" aria-label="${t('Название игры')}"><button class="primary">${t('Найти в выбранных каталогах')}</button></form><p class="hint">${t('Выбери игру в каждом каталоге, затем отметь, какие сведения взять. Остальные поля сохранятся.')}</p><div id="catalogComparisonResults"></div><div class="catalogComparisonActions"><span id="catalogSelectionCount" class="hint" role="status"></span><button id="applyCatalogFields" class="primary" disabled>${t('Применить выбранное')}</button></div>`;
   const active=()=>session===catalogUpdateSession&&catalogUpdateDialog.open;
   const close=()=>{if(!applying){catalogUpdateDialog.close();++catalogUpdateSession;catalogUpdateDialog.classList.remove('catalogComparisonDialog');}};
   $('closeCatalogUpdate').onclick=close;catalogUpdateDialog.oncancel=event=>{event.preventDefault();close();};
@@ -65,13 +71,17 @@ async function openCatalogComparison(game){
     if(field==='description')return `<div class="catalogCompareDescription">${e(content)}</div>`;
     return `<span>${e(Array.isArray(content)?content.join(', '):content)}</span>`;
   }
+  function updateSourceControls(){
+    catalogUpdateDialog.querySelectorAll('[data-catalog-source]').forEach(input=>{input.checked=providers.includes(input.dataset.catalogSource);input.disabled=applying||savingSources||(providers.length===1&&input.checked);});
+    $('applyCatalogFields').disabled=!Object.keys(catalogChosenFields(selected,states)).length||applying||savingSources;
+  }
   function updateCount(){const count=Object.keys(catalogChosenFields(selected,states)).length;$('catalogSelectionCount').textContent=t('Выбрано полей:')+' '+count;$('applyCatalogFields').disabled=!count||applying;}
   function draw(){
     if(!active()||applying)return;
-    $('catalogComparisonResults').innerHTML=`<div class="catalogComparisonScroll"><table class="catalogComparisonTable"><thead><tr><th>${t('Поле')}</th><th>${t('Сейчас в библиотеке')}</th>${providers.map(provider=>{const state=states[provider];return `<th><strong>${e(catalogComparisonProviderLabel(provider))}</strong><select data-compare-provider="${provider}" aria-label="${e(catalogComparisonProviderLabel(provider))}: ${t('Выбрать игру')}" ${state.loading?'disabled':''}><option value="">${t('Выбрать игру')}</option>${state.items.map((item,index)=>`<option value="${index}" ${item.source_id===state.source?'selected':''}>${e(item.title)}</option>`).join('')}</select>${state.loading?`<p class="hint" role="status">${t('Загрузка…')}</p>`:state.error?`<p class="warning">${e(t(state.error))}</p>`:!state.items.length?`<p class="hint">${t('Ничего не найдено')}</p>`:''}</th>`;}).join('')}</tr></thead><tbody>${catalogComparisonFields.map(([field,label])=>`<tr><th scope="row">${t(label)}</th><td class="${!selected[field]?'catalogFieldSelected':''}"><label class="catalogFieldChoice"><input type="radio" name="catalog-field-${field}" data-compare-field="${field}" value="" ${!selected[field]?'checked':''} aria-label="${t(label)}: ${t('Оставить текущее')}">${value(game,field)}</label></td>${providers.map(provider=>{const state=states[provider],available=state.game&&catalogFieldValue(state.game,field);return `<td class="${selected[field]===provider?'catalogFieldSelected':''}"><label class="catalogFieldChoice"><input type="radio" name="catalog-field-${field}" data-compare-field="${field}" value="${provider}" ${selected[field]===provider?'checked':''} ${!available||state.loading?'disabled':''} aria-label="${t(label)}: ${e(catalogComparisonProviderLabel(provider))}">${state.game?value(state.game,field):'<span class="hint">—</span>'}</label></td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;
+    $('catalogComparisonResults').innerHTML=`<div class="catalogComparisonScroll"><table class="catalogComparisonTable" style="min-width:${120+220*(providers.length+1)}px"><thead><tr><th>${t('Поле')}</th><th>${t('Сейчас в библиотеке')}</th>${providers.map(provider=>{const state=states[provider];return `<th><strong>${e(catalogComparisonProviderLabel(provider))}</strong><select data-compare-provider="${provider}" aria-label="${e(catalogComparisonProviderLabel(provider))}: ${t('Выбрать игру')}" ${state.loading?'disabled':''}><option value="">${t('Выбрать игру')}</option>${state.items.map((item,index)=>`<option value="${index}" ${item.source_id===state.source?'selected':''}>${e(item.title)}${provider==='igdb'&&item.release_date?' · '+e(item.release_date.slice(0,4)):''}</option>`).join('')}</select>${state.loading?`<p class="hint" role="status">${t('Загрузка…')}</p>`:state.error?`<p class="warning">${e(t(state.error))}</p>`:!state.items.length?`<p class="hint">${t('Ничего не найдено')}</p>`:''}</th>`;}).join('')}</tr></thead><tbody>${catalogComparisonFields.map(([field,label])=>`<tr><th scope="row">${t(label)}</th><td class="${!selected[field]?'catalogFieldSelected':''}"><label class="catalogFieldChoice"><input type="radio" name="catalog-field-${field}" data-compare-field="${field}" value="" ${!selected[field]?'checked':''} aria-label="${t(label)}: ${t('Оставить текущее')}">${value(game,field)}</label></td>${providers.map(provider=>{const state=states[provider],available=state.game&&catalogFieldValue(state.game,field);return `<td class="${selected[field]===provider?'catalogFieldSelected':''}"><label class="catalogFieldChoice"><input type="radio" name="catalog-field-${field}" data-compare-field="${field}" value="${provider}" ${selected[field]===provider?'checked':''} ${!available||state.loading?'disabled':''} aria-label="${t(label)}: ${e(catalogComparisonProviderLabel(provider))}">${state.game?value(state.game,field):'<span class="hint">—</span>'}</label></td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;
     $('catalogComparisonResults').querySelectorAll('[data-compare-field]').forEach(input=>input.onchange=()=>{selected[input.dataset.compareField]=input.value;draw();});
     $('catalogComparisonResults').querySelectorAll('[data-compare-provider]').forEach(input=>input.onchange=()=>selectCandidate(input.dataset.compareProvider,input.value));
-    updateCount();
+    updateCount();updateSourceControls();
   }
   async function selectCandidate(provider,index){
     const state=states[provider],item=state.items[Number(index)],selection=++state.revision,searchRevision=revision;
@@ -84,7 +94,8 @@ async function openCatalogComparison(game){
     finally{if(active()&&revision===searchRevision&&selection===state.revision){state.loading=false;draw();}}
   }
   async function search(){
-    if(applying)return;
+    if(applying||savingSources)return;
+    if(!providers.length){toast(t('Выбери хотя бы один каталог'),true);return;}
     const searchRevision=++revision,query=$('catalogUpdateQuery').value.trim();
     for(const field of Object.keys(selected))delete selected[field];
     for(const state of Object.values(states)){state.items=[];state.game=null;state.source='';state.error='';state.loading=true;state.revision++;}draw();
@@ -100,11 +111,21 @@ async function openCatalogComparison(game){
       }catch(error){if(active()&&revision===searchRevision){state.error=error.message;state.loading=false;draw();}}
     }));
   }
+  catalogUpdateDialog.querySelectorAll('[data-catalog-source]').forEach(input=>input.onchange=async()=>{
+    if(applying||savingSources)return;
+    const next=catalogAllProviders.filter(provider=>catalogUpdateDialog.querySelector(`[data-catalog-source="${provider}"]`).checked);
+    if(!next.length){updateSourceControls();toast(t('Выбери хотя бы один каталог'),true);return;}
+    savingSources=true;updateSourceControls();
+    try{preferences=await api('/api/settings',{catalog_sources:next});providers=catalogEnabledProviders(preferences.catalog_sources);}
+    catch(error){toast(t(error.message),true);}
+    finally{savingSources=false;updateSourceControls();}
+    if(active())await search();
+  });
   $('catalogUpdateSearch').onsubmit=event=>{event.preventDefault();search();};
   $('applyCatalogFields').onclick=()=>busy($('applyCatalogFields'),async()=>{
     const fields=catalogChosenFields(selected,states);if(!Object.keys(fields).length)return;
     applying=true;catalogUpdateDialog.querySelectorAll('input,select,button').forEach(input=>input.disabled=true);
-    try{await api('/api/catalog/apply',{id:game.id,mode:'metadata',fields});await reload();renderInspector();applying=false;close();toast(t('Сведения обновлены'));}
+    try{await api('/api/catalog/apply',{id:game.id,mode:'metadata',fields,snapshots:Object.fromEntries(Object.values(states).filter(state=>state.game?._catalog_snapshot).map(state=>[state.source,state.game._catalog_snapshot]))});await reload();renderInspector();applying=false;close();toast(t('Сведения обновлены'));}
     finally{applying=false;if(active()){catalogUpdateDialog.querySelectorAll('input,select,button').forEach(input=>input.disabled=false);draw();}}
   });
   catalogUpdateDialog.showModal();draw();await search();
@@ -124,7 +145,7 @@ document.addEventListener('contextmenu',event=>{
   const coverButton=document.createElement('button');coverButton.dataset.catalogAction='cover';coverButton.textContent=t('Выбрать обложку из каталога');coverButton.onclick=()=>{menu.hidden=true;openCatalogUpdate(game,'cover');};menu.append(coverButton);
   if(row){
     const info=document.createElement('button');info.dataset.catalogAction='metadata';info.textContent=t('Обновить сведения');info.onclick=()=>{menu.hidden=true;openCatalogUpdate(game);};menu.append(info);
-    const merge=document.createElement('button');merge.dataset.catalogAction='merge';merge.textContent=t('Объединить выбранные');merge.disabled=markedGames.size!==2||!markedGames.has(game.id);merge.title=t('Выбери ровно две карточки одной игры');merge.onclick=()=>{menu.hidden=true;mergeButton.click();};menu.append(merge);
+    const merge=document.createElement('button');merge.dataset.catalogAction='merge';merge.textContent=t('Объединить выбранные');merge.disabled=(markedGames.size<2||markedGames.size>100)||!markedGames.has(game.id);merge.title=t('Выбери от 2 до 100 карточек одной игры');merge.onclick=()=>{menu.hidden=true;mergeButton.click();};menu.append(merge);
   }
   menu.style.top=Math.max(8,Math.min(event.clientY,innerHeight-menu.offsetHeight-8))+'px';
 });
@@ -155,7 +176,7 @@ const settingsBeforeCatalog=renderSettings;
 renderSettings=function(){
   settingsBeforeCatalog();
   const panel=$('cacheAllCovers').closest('.settingsSection'),controls=document.createElement('div');controls.className='catalogBatchControls';
-  controls.innerHTML=`<label>${t('Источник альтернативных обложек')}<select id="catalogCoverProvider"><option value="auto">${t('Авто: Steam → Metacritic → Wikipedia')}</option><option value="metacritic">Metacritic</option><option value="steam">Steam</option><option value="wikipedia">Wikipedia / Wikidata</option></select></label><div class="settingsRow"><button id="catalogMissingCovers">${t('Заполнить отсутствующие обложки')}</button><button id="catalogAllCovers">${t('Обновить обложки из каталога')}</button></div><p class="hint">${t('Автоматически выбирается только точное совпадение. Для другой версии игры выбери обложку вручную через ПКМ.')}</p>`;
+  controls.innerHTML=`<label>${t('Источник альтернативных обложек')}<select id="catalogCoverProvider"><option value="auto">${t('Авто: Steam → IGDB → Metacritic → Wikipedia')}</option><option value="igdb">IGDB</option><option value="metacritic">Metacritic</option><option value="steam">Steam</option><option value="wikipedia">Wikipedia / Wikidata</option></select></label><div class="settingsRow"><button id="catalogMissingCovers">${t('Заполнить отсутствующие обложки')}</button><button id="catalogAllCovers">${t('Обновить обложки из каталога')}</button></div><p class="hint">${t('Автоматически выбирается только точное совпадение. Для другой версии игры выбери обложку вручную через ПКМ.')}</p>`;
   panel.append(controls);$('catalogMissingCovers').onclick=()=>runCatalogBatch('cover',$('catalogCoverProvider').value,true);$('catalogAllCovers').onclick=()=>runCatalogBatch('cover',$('catalogCoverProvider').value,false);
   const source=$('steamSourcePanel'),section=document.createElement('div');
   section.innerHTML=`<h3>${t('Серии игр')}</h3><p class="hint">${t('Steam и Metacritic дают обложки и сведения. Серии берутся из Wikidata: только явно связанные игры, без догадок по названию.')}</p><button id="catalogFillSeries">${t('Заполнить пустые серии')}</button>`;source.append(section);$('catalogFillSeries').onclick=()=>runCatalogBatch('series');

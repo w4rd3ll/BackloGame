@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 — 2026-10-08
+
+- Add IGDB for game search, metadata comparison, series and portrait/landscape covers; Twitch credentials stay on the catalog relay.
+- Save catalog source checkboxes across games and restarts. Search only enabled sources, resize comparison columns dynamically and require at least one source.
+- Apply the catalog values already shown in the comparison without repeating remote metadata requests.
+- Merge 2 to 100 cards with primary-card and current-status selection, combined history and exact undo. Reject stale previews and preserve original cards in the archive.
+- Speed up complete backups by storing already-compressed covers without recompressing them.
+
 ## 0.5.2 — 2026-10-04
 
 - Show a large original-cover preview on hover in the SteamGridDB gallery, with a short delay and placement within the window. Hide it on pointer exit, scrolling or resizing.

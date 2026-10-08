@@ -2,11 +2,11 @@
 const mergeDialog=document.createElement('dialog');mergeDialog.className='mergeDialog';document.body.append(mergeDialog);
 const mergeButton=document.createElement('button');mergeButton.id='mergeGames';mergeButton.disabled=true;$('batchEdit').after(mergeButton);
 const batchBeforeMerge=updateBatchBar;
-updateBatchBar=function(){batchBeforeMerge();mergeButton.textContent=t('Объединить');mergeButton.disabled=markedGames.size!==2;mergeButton.title=t('Выбери ровно две карточки одной игры');};
+updateBatchBar=function(){batchBeforeMerge();mergeButton.textContent=t('Объединить');mergeButton.disabled=(markedGames.size<2||markedGames.size>100);mergeButton.title=t('Выбери от 2 до 100 карточек одной игры');};
 updateBatchBar();
 mergeButton.onclick=async()=>{
   if(dirty){toast(t('Сначала сохрани изменения в карточке'),true);return;}
-  const ids=[...markedGames],selected=ids.map(id=>games.find(g=>g.id===id));if(ids.length!==2||selected.some(g=>!g))return;
+  const ids=[...markedGames],selected=ids.map(id=>games.find(g=>g.id===id));if((ids.length<2||ids.length>100)||selected.some(g=>!g))return;
   const option=g=>`<option value="${g.id}">${e(g.title)} · ${e(displayValue(g.platform))} · ${e(displayValue(g.status))}</option>`;
   mergeDialog.innerHTML=`<div class="dialogHead"><h2>${t('Объединить карточки')}</h2><button id="closeMerge" aria-label="${t('Закрыть')}">✕</button></div><p class="hint">${t('Объединяй только одну и ту же игру. Разные издания могут отличаться.')}</p><div class="mergeChoices"><label>${t('Основная карточка: название, описание и обложка')}<select id="mergePrimary">${selected.map(option).join('')}</select></label><label>${t('Текущие платформа и статус')}<select id="mergeCurrent">${selected.map(option).join('')}</select></label></div><div id="mergeResult" role="status"></div><div class="detailActions"><button id="cancelMerge">${t('Отмена')}</button><button id="applyMerge" class="primary" disabled>${t('Объединить')}</button></div>`;
   $('mergeCurrent').value=String((selected.find(g=>g.status!=='Пройдено')||selected[1]).id);
@@ -19,7 +19,7 @@ mergeButton.onclick=async()=>{
     try{
       const result=await api('/api/merge-preview',{ids,primary:Number($('mergePrimary').value),current:Number($('mergeCurrent').value)});if(revision!==version)return;
       preview=result;const g=result.game;
-      $('mergeResult').innerHTML=`<div class="mergePreview">${g.image_local||g.image?`<img src="${e(g.image_local||g.image)}" alt="" referrerpolicy="no-referrer">`:''}<div><h3>${e(g.title)}</h3><p>${e(displayValue(g.platform))} · ${e(displayValue(g.status))}</p><p>${g.favorite?'★ '+t('Избранное'):''}</p></div></div><h3>${t('История прохождений')}</h3><div class="mergeHistory">${g.playthroughs.map(row=>`<p>${completedText(row.date)} · ${e(displayValue(row.platform))}</p>`).join('')||`<p class="hint">${t('Дат прохождения пока нет')}</p>`}</div>${g.notes?`<h3>${t('Моя заметка')}</h3><p class="mergeNotes">${e(g.notes)}</p>`:''}<p class="hint">${t('Заметки, теги, серии и история объединяются. Исходные данные обеих карточек сохраняются в архиве; перед объединением создаётся резервная копия.')}</p>`;
+      $('mergeResult').innerHTML=`<div class="mergePreview">${g.image_local||g.image?`<img src="${e(g.image_local||g.image)}" alt="" referrerpolicy="no-referrer">`:''}<div><h3>${e(g.title)}</h3><p>${e(displayValue(g.platform))} · ${e(displayValue(g.status))}</p><p>${g.favorite?'★ '+t('Избранное'):''}</p></div></div><h3>${t('История прохождений')}</h3><div class="mergeHistory">${g.playthroughs.map(row=>`<p>${completedText(row.date)} · ${e(displayValue(row.platform))}</p>`).join('')||`<p class="hint">${t('Дат прохождения пока нет')}</p>`}</div>${g.notes?`<h3>${t('Моя заметка')}</h3><p class="mergeNotes">${e(g.notes)}</p>`:''}<p class="hint">${t('Заметки, теги, серии и история объединяются. Исходные данные всех карточек сохраняются в архиве; перед объединением создаётся резервная копия.')}</p>`;
       $('applyMerge').disabled=false;
     }catch(err){if(revision===version)$('mergeResult').textContent=t(err.message);}
   }

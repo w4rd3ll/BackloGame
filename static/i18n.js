@@ -51,7 +51,7 @@ const translations={
   "Остановлено": "Stopped",
   "Ошибки": "Errors",
   "Источник альтернативных обложек": "Alternative cover source",
-  "Авто: Steam → Metacritic → Wikipedia": "Auto: Steam → Metacritic → Wikipedia",
+  "Авто: Steam → IGDB → Metacritic → Wikipedia": "Auto: Steam → IGDB → Metacritic → Wikipedia",
   "Заполнить отсутствующие обложки": "Fill missing covers",
   "Обновить обложки из каталога": "Refresh covers from a catalog",
   "Автоматически выбирается только точное совпадение. Для другой версии игры выбери обложку вручную через ПКМ.": "Only an exact match is selected automatically. To use another version, choose its cover through the right-click menu.",
@@ -62,19 +62,21 @@ const translations={
 
   "Платформа прохождения": "Playthrough platform",
   "Объединить": "Merge",
-  "Выбери ровно две карточки одной игры": "Select exactly two cards of the same game",
+  "Выбери от 2 до 100 карточек одной игры": "Select 2 to 100 cards of the same game",
   "Объединить карточки": "Merge game cards",
   "Объединяй только одну и ту же игру. Разные издания могут отличаться.": "Only merge the same game. Different editions may differ.",
   "Основная карточка: название, описание и обложка": "Primary card: title, description and cover",
   "Текущие платформа и статус": "Current platform and status",
-  "Заметки, теги, серии и история объединяются. Исходные данные обеих карточек сохраняются в архиве; перед объединением создаётся резервная копия.": "Notes, tags, series and history are combined. Original card data is archived; a backup is created before merging.",
+  "Заметки, теги, серии и история объединяются. Исходные данные всех карточек сохраняются в архиве; перед объединением создаётся резервная копия.": "Notes, tags, series and history are combined. Original card data is archived; a backup is created before merging.",
   "Карточки объединены": "Game cards merged",
   "Отменить объединение": "Undo merge",
   "Объединение отменено": "Merge undone",
   "Исходные карточки": "Original cards",
   "Источник": "Source",
   "Текущая платформа / пройдено на ней. Нажми, чтобы открыть игры.": "Current platform / completed on it. Click to view games.",
-  "Select exactly two games": "Select exactly two games",
+  "The catalog preview expired. Search again.": "The catalog preview expired. Search again.",
+  "Invalid catalog snapshot": "Invalid catalog snapshot",
+  "Select between 2 and 100 games": "Select between 2 and 100 games",
   "A selected game no longer exists": "A selected game no longer exists",
   "The games changed. Review the preview again.": "The games changed. Review the preview again.",
   "Undo expired. Restore the backup instead.": "Undo expired. Restore the backup instead.",
@@ -519,3 +521,5 @@ Object.assign(translations,{"Скрыть": "Hide", "Все": "All", "Тольк
 Object.assign(translations,{"Содержимое":"Content","Adult":"Adult"});
 
 Object.assign(translations,{"Страницы обложек":"Cover pages","Назад":"Previous","Далее":"Next","Страница":"Page","Максимальный размер обложки":"Maximum cover size","Обложка больше 32 МБ":"Cover exceeds 32 MB","Обложка больше 64 МБ":"Cover exceeds 64 MB","Обложка больше 128 МБ":"Cover exceeds 128 MB"});
+
+Object.assign(translations,{'Найти в выбранных каталогах':'Search selected catalogs','Выбери хотя бы один каталог':'Select at least one catalog'});

@@ -58,7 +58,7 @@ async function openSteamGrid(game,initialOrientation='portrait'){
   });
   const close=()=>{if(!saving){revision++;gridDialog.close();}};
   const provider=document.createElement('select');provider.id='gridProvider';provider.setAttribute('aria-label',t('Источник'));
-  provider.innerHTML='<option value="steamgriddb">SteamGridDB</option><option value="metacritic">Metacritic</option><option value="steam">Steam</option><option value="wikipedia">Wikipedia / Wikidata</option>';
+  provider.innerHTML='<option value="steamgriddb">SteamGridDB</option><option value="igdb">IGDB</option><option value="metacritic">Metacritic</option><option value="steam">Steam</option><option value="wikipedia">Wikipedia / Wikidata</option>';
   $('gridSearch').insertBefore(provider,$('gridSearch').querySelector('button'));
   provider.onchange=()=>{if(!saving){const next=provider.value;close();openCatalogUpdate(game,'cover',next,orientation);}};
   $('gridClose').onclick=close;gridDialog.oncancel=event=>{if(saving)event.preventDefault();else revision++;};

@@ -30,6 +30,42 @@ class GameMergeTests(unittest.TestCase):
         preview=game_merge.preview(server,self.data)
         return game_merge.apply(server,dict(self.data,signature=preview['signature']))
 
+    def test_three_cards_keep_all_data_and_undo_exactly(self):
+        third=server.save_game({'title':'Third edition','source_id':'manual:third','platform':'Xbox','status':'Пройдено','completed_at':'2021-02-03','notes':'Third note','series':'Alone in the Dark','developer':'Third developer'})
+        self.data['ids'].append(third['id'])
+        self.data['primary']=third['id']
+        before=server.library()
+        result=self.merge()
+        game=server.library()[0]
+        self.assertEqual(game['title'],'Third edition')
+        self.assertEqual(game['platform'],'PC - Steam')
+        self.assertEqual(game['description'],'PS3 description')
+        self.assertEqual(game['series'],'Alone in the Dark')
+        self.assertEqual(len(game['merge_archive']),3)
+        self.assertEqual(len(game['playthroughs']),2)
+        self.assertEqual(set(game['source_aliases']),{'hltb:123','steam:259170','manual:third'})
+        self.assertIn('Third note',game['notes'])
+        game_merge.undo(server,{'undo':result['undo']})
+        self.assertEqual(server.library(),before)
+
+    def test_merge_choices_are_bound_to_preview(self):
+        preview=game_merge.preview(server,self.data)
+        with self.assertRaises(ValueError):
+            game_merge.apply(server,dict(self.data,primary=self.second['id'],signature=preview['signature']))
+        self.assertEqual(len(server.library()),2)
+
+    def test_change_during_backup_does_not_get_overwritten(self):
+        preview=game_merge.preview(server,self.data)
+        def change():server.save_game({'title':self.first['title'],'notes':'Concurrent edit'},self.first['id'])
+        with patch.object(server,'create_backup',side_effect=change),self.assertRaises(ValueError):
+            game_merge.apply(server,dict(self.data,signature=preview['signature']))
+        self.assertEqual(len(server.library()),2)
+        self.assertEqual(server.library()[0]['notes'],'Concurrent edit')
+
+    def test_duplicate_and_oversized_selection_are_rejected(self):
+        for ids in ([self.first['id']]*3,list(range(101)),[self.first['id']]):
+            with self.subTest(ids=ids),self.assertRaises(ValueError):game_merge.preview(server,{'ids':ids})
+
     def test_merge_history_metadata_backup_and_exact_undo(self):
         before=server.library()
         result=self.merge()

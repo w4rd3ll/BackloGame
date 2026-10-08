@@ -48,3 +48,21 @@ Official references:
 - https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
 - https://developers.cloudflare.com/workers/platform/pricing/
 - https://developers.cloudflare.com/workers/platform/known-issues/
+# IGDB catalog
+
+The same Worker serves fixed read-only IGDB routes:
+
+- `GET /v1/igdb/search?q=title`
+- `GET /v1/igdb/game?id=123`
+
+Store `IGDB_CLIENT_ID` and `IGDB_CLIENT_SECRET` as Worker Secrets. Never put
+credentials in Wrangler configuration, desktop settings, release binaries or logs.
+The Worker obtains and refreshes a Twitch client-credentials access token itself.
+It returns only normalized public game metadata, series and image URLs.
+
+An independent rate limiter allows 60 requests per minute per IP. Results are
+cached for 30 minutes and upstream queries are spaced in each Worker isolate.
+Only the games endpoint and a fixed set of fields are queried; callers cannot
+supply APICalypse, an upstream URL, headers or an access token.
+
+IGDB API documentation: https://api-docs.igdb.com/

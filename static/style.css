@@ -141,7 +141,7 @@ header{gap:14px}.panelToggle{font-size:19px;line-height:1;padding:10px;flex-shri
 .list:not(.compact) .gameName{overflow-wrap:anywhere}
 .catalogComparisonDialog{width:min(1320px,calc(100vw - 32px))}
 .catalogComparisonScroll{overflow-x:auto}
-.catalogComparisonTable{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;min-width:850px;font-size:12px}
+.catalogComparisonTable{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;min-width:1050px;font-size:12px}
 .catalogComparisonTable th,.catalogComparisonTable td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:12px;vertical-align:top;text-align:left;overflow-wrap:anywhere}
 .catalogComparisonTable th:first-child{width:120px;border-left:1px solid var(--line)}
 .catalogComparisonTable thead th{background:var(--card);border-top:1px solid var(--line)}
@@ -175,3 +175,11 @@ header{gap:14px}.panelToggle{font-size:19px;line-height:1;padding:10px;flex-shri
 
 .gridAssets[aria-busy="true"]{min-height:180px}
 .gridHoverPreview{position:fixed;z-index:20;pointer-events:none;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--bg,#10181d);box-shadow:0 12px 45px #0009}.gridHoverPreview[hidden]{display:none}.gridHoverPreview img{display:block;width:100%;height:100%;object-fit:contain}
+
+.catalogComparisonDialog .dialogHead{flex-wrap:wrap;align-items:center;gap:16px}
+.catalogComparisonDialog .dialogHead h2{flex:1;min-width:240px}
+.catalogSourceChoices{display:flex;flex-wrap:wrap;gap:8px 14px;margin:0;padding:8px 12px;border:1px solid var(--line);border-radius:10px;font-size:12px}
+.catalogSourceChoices legend{color:var(--muted);padding:0 5px}
+.catalogSourceChoices label{display:flex;align-items:center;gap:6px;white-space:nowrap;margin:0;cursor:pointer}
+.catalogSourceChoices input{width:auto;margin:0;accent-color:var(--accent)}
+.catalogSourceChoices label:has(input:disabled){cursor:default}

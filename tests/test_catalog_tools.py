@@ -22,6 +22,37 @@ class CatalogToolsTests(unittest.TestCase):
         for item in reversed(self.patches):item.stop()
         self.work.cleanup()
 
+    def test_displayed_snapshot_applies_without_second_network_request(self):
+        fresh={'title':'Portal','description':'Displayed wiki text','source_url':'https://ru.wikipedia.org/?curid=123'}
+        with patch.object(server,'details',return_value=fresh):
+            shown=catalog_tools.preview_details(server,'wiki:ru:123')
+        # Mutating the returned dictionary must not change the trusted snapshot.
+        shown['description']='Client-side edit'
+        with patch.object(server,'details',side_effect=OSError('offline')) as remote:
+            result=catalog_tools.apply(server,{'id':self.game['id'],'fields':{'description':'wiki:ru:123'},'snapshots':{'wiki:ru:123':shown['_catalog_snapshot']}})
+            remote.assert_not_called()
+        self.assertEqual(result['game']['description'],'Displayed wiki text')
+        self.assertEqual(result['game']['notes'],'mine')
+
+    def test_snapshot_expiry_and_source_mismatch_leave_game_unchanged(self):
+        with patch.object(server,'details',return_value={'description':'Displayed'}):
+            shown=catalog_tools.preview_details(server,'wiki:ru:123')
+        before=server.library()
+        for source,expired in [('steam:400',False),('wiki:ru:123',True)]:
+            clock=patch('catalog_tools.time.monotonic',return_value=10**20) if expired else patch('catalog_tools.time.monotonic',wraps=__import__('time').monotonic)
+            with clock,self.assertRaises(ValueError):
+                catalog_tools.apply(server,{'id':self.game['id'],'fields':{'description':source},'snapshots':{source:shown['_catalog_snapshot']}})
+            self.assertEqual(server.library(),before)
+
+    def test_catalog_preferences_require_one_known_source_and_persist(self):
+        for value in ([],['unknown'],None,'steam',[True]):
+            with self.subTest(value=value),self.assertRaises(ValueError):server.validate_settings({'catalog_sources':value})
+        valid=server.validate_settings({'catalog_sources':['igdb','igdb']})
+        self.assertEqual(valid['catalog_sources'],['igdb'])
+        with server.connection() as db:
+            db.execute('INSERT OR REPLACE INTO settings VALUES (?,?)',('catalog_sources','["igdb"]'))
+        self.assertEqual(server.settings()['catalog_sources'],['igdb'])
+
     def test_steam_keeps_its_description_without_wikipedia_fallback(self):
         for description in ('Short English description', 'Короткое русское описание'):
             payload={'400':{'success':True,'data':{'name':'Portal','about_the_game':description,'release_date':{'date':'Oct 10, 2007'},'genres':[],'platforms':{}}}}

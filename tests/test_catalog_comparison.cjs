@@ -8,3 +8,7 @@ assert.equal(run("catalogFieldValue({release_label:'2007'},'release_date')"),'20
 assert.equal(run("catalogFieldValue({image:'old',custom_covers:{portrait:{url:'chosen'}}},'image')"),'chosen');
 assert.equal(run("catalogComparisonProviderLabel('steam')"),'Steam');
 console.log('Catalog comparison: mixed field choices, unavailable sources, date labels and selected portrait artwork: OK');
+
+assert.deepEqual(run("catalogEnabledProviders(['igdb'])"),['igdb']);
+assert.deepEqual(run("catalogEnabledProviders(['steam','wikipedia','unknown'])"),['steam','wikipedia']);
+assert.equal(run("catalogEnabledProviders([])").length,4);

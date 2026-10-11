@@ -14,7 +14,7 @@ Demonstration library; progress is illustrative. Downloads start empty.
 
 ## Get started
 
-1. Download `BackloGame-0.6.3-windows-x64-portable.zip` from Releases.
+1. Download `BackloGame-0.6.4-windows-x64-portable.zip` from Releases.
 2. If Windows blocks startup, open the ZIP properties, select **Unblock**, then extract again.
    Extract the entire archive to a writable local folder.
 3. Run `BackloGame.exe`. Keep `_internal` beside it.
@@ -41,6 +41,7 @@ Russian in **Settings → General → Interface language**.
 - Add notes, tags, priorities, and several series separated by `;`.
 - Choose and save portrait and landscape covers from SteamGridDB and other catalogs. SteamGridDB supports saved content/style/size filters, paginated results, enlarged hover previews, and double-click to apply.
 - Select a manual thumbnail crop and fill missing series from Wikidata.
+- Upload your own PNG, JPEG, GIF or WebP from the details panel or context menu. Choose portrait or landscape, preview, or restore the original. Files are stored locally and included in full backups.
 - Merge two or more duplicate cards with a preview, retained history, and undo.
 - Edit multiple games together and collapse the side panels.
 - Share the current category and filters as an offline HTML file with embedded, compressed cover thumbnails. Original artwork stays unchanged. Personal notes are included only when explicitly enabled.

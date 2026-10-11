@@ -703,7 +703,7 @@ def validate(data, allowed_statuses=None):
         if not isinstance(covers,dict) or set(covers)-{'portrait','landscape'}:raise ValueError('Invalid custom covers')
         result['custom_covers']={}
         for orientation,row in covers.items():
-            if not isinstance(row,dict) or not isinstance(row.get('url'),str) or not row['url'].startswith('https://') or len(row['url'])>20000 or not isinstance(row.get('author',''),str) or len(row.get('author',''))>300:raise ValueError('Invalid custom cover')
+            if not isinstance(row,dict) or not isinstance(row.get('url'),str) or not (row['url'].startswith('https://') or row['url']==row.get('local') and re.fullmatch(r'/covers/[a-f0-9]{64}\.(?:png|jpg|gif|webp)',row['url']) and (DATA/row['url'].lstrip('/')).is_file()) or len(row['url'])>20000 or not isinstance(row.get('author',''),str) or len(row.get('author',''))>300:raise ValueError('Invalid custom cover')
             local=row.get('local','')
             if not isinstance(local,str) or local and not re.fullmatch(r'/covers/[a-f0-9]{64}\.(?:png|jpg|gif|webp)',local):raise ValueError('Invalid custom cover file')
             result['custom_covers'][orientation]={'url':row['url'],'local':local if local and (DATA/local.lstrip('/')).is_file() else '', 'author':row.get('author',''),'asset':row.get('asset')}
@@ -797,6 +797,10 @@ def archive_cover(url):
         raw = response.read(limit + 1)
     if len(raw) > limit:
         raise ValueError(f'Обложка больше {limit_mb} МБ')
+    return archive_cover_bytes(raw)
+
+
+def archive_cover_bytes(raw):
     if raw.startswith(b'\x89PNG\r\n\x1a\n'):
         extension = 'png'
     elif raw.startswith(b'\xff\xd8\xff'):
@@ -819,6 +823,34 @@ def archive_cover(url):
         finally:
             temporary.unlink(missing_ok=True)
     return '/covers/' + name
+
+
+def upload_cover(gid, orientation, raw):
+    if type(gid) is not int or orientation not in ('portrait','landscape'):
+        raise ValueError('Invalid artwork orientation or game ID')
+    limit_mb=settings()['cover_max_mb']
+    if not raw or len(raw)>limit_mb*1024*1024:
+        raise ValueError(f'Обложка больше {limit_mb} МБ' if raw else 'Выбери файл обложки')
+    from PIL import Image, UnidentifiedImageError
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.format not in ('PNG','JPEG','GIF','WEBP'):
+                raise ValueError('Выбери изображение PNG, JPEG, GIF или WebP')
+            image.verify()
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
+        raise ValueError('Не удалось прочитать изображение') from exc
+    with MUTATION_LOCK:
+        old=next((g for g in library() if g['id']==gid),None)
+        if not old:raise ValueError('Игра уже удалена')
+        create_backup(automatic=True)
+        local=archive_cover_bytes(raw)
+        covers=dict(old.get('custom_covers',{}))
+        covers[orientation]={'url':local,'local':local,'author':''}
+        try:
+            saved=save_game({'title':old['title'],'custom_covers':covers,**({'thumbnail_crop':None} if orientation=='landscape' else {})},gid)
+        finally:
+            cleanup_unused_covers()
+    return {'game':saved}
 
 
 def update_cover(gid):
@@ -1171,6 +1203,7 @@ class Handler(BaseHTTPRequestHandler):
             files = {'/library-features.js':'library-features.js','/rutracker-icon.png':'rutracker-icon.png','/i18n.js':'i18n.js','/desktop.js':'desktop.js','/app-icon.png':'app-icon.png','/app-icon.ico':'app-icon.ico','/favicon.ico':'app-icon.ico','/': 'index.html', '/app.js': 'app.js', '/enhancements.js': 'enhancements.js', '/thumbnail.js': 'thumbnail.js', '/style.css': 'style.css'}
             files['/themes.js'] = 'themes.js'
             files['/library-navigation.js'] = 'library-navigation.js'
+            files['/cover-upload.js'] = 'cover-upload.js'
             files['/updates.js'] = 'updates.js'
             files['/statistics.js'] = 'statistics.js'
             files['/merge-games.js'] = 'merge-games.js'
@@ -1208,6 +1241,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply({'error': 'Обновите страницу приложения'}, 403)
         try:
             length = int(self.headers.get('Content-Length', '0'))
+            if urllib.parse.urlsplit(self.path).path == '/api/covers/upload':
+                query=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                limit_mb=settings()['cover_max_mb']
+                if length<=0:raise ValueError('Выбери файл обложки')
+                if length>limit_mb*1024*1024:raise ValueError(f'Обложка больше {limit_mb} МБ')
+                raw=self.rfile.read(length)
+                if len(raw)!=length:raise ValueError('Не удалось прочитать изображение')
+                return self.reply(upload_cover(int(query.get('id',[''])[0]),query.get('orientation',[''])[0],raw))
             if self.path == '/api/backup-upload':
                 if length<=0 or length>200_000_000: raise ValueError('Максимальный размер копии — 200 МБ')
                 return self.reply(restore_backup(self.rfile.read(length)))

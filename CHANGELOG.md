@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4 - 2026-10-11
+
+- Upload your own PNG, JPEG, GIF or WebP covers from the game details or context menu, with preview and independent portrait/landscape selection.
+- Store uploaded artwork locally, preserve animated GIFs and include it in full backups; restore the original cover without losing game metadata.
+- Apply the configured cover size limit, validate image contents and clean up replaced files that are no longer referenced.
+
 ## 0.6.3 - 2026-10-08
 
 - Prevent dialogs from closing when text selection starts inside and the pointer is released outside; dismiss only genuine backdrop clicks.

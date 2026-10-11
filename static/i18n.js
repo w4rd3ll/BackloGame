@@ -1,6 +1,13 @@
 'use strict';
 let uiLanguage='en';
 const translations={
+  "Загрузить свою обложку": "Upload your own cover",
+  "Файл обложки": "Cover file",
+  "Обложка больше {size} МБ": "Cover is larger than {size} MB",
+  "Выбери файл обложки": "Choose a cover file",
+  "Выбери изображение PNG, JPEG, GIF или WebP": "Choose a PNG, JPEG, GIF or WebP image",
+  "Не удалось прочитать изображение": "Unable to read the image",
+
   "Подборки": "Collections",
   "Сохранить подборку": "Save collection",
   "Обновить": "Update",

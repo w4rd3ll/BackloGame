@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.5 - 2026-11-12
+
+- Use the Windows HTTPS client for IGDB requests to avoid connection failures in the bundled client.
+- Keep fetched Steam metadata when the optional English release-date lookup fails.
+
 ## 0.6.4 - 2026-10-11
 
 - Upload your own PNG, JPEG, GIF or WebP covers from the game details or context menu, with preview and independent portrait/landscape selection.

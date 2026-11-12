@@ -49,14 +49,20 @@ MUTATION_LOCK = threading.RLock()
 TRASH = {}
 
 
-def remote(url):
+def remote(url, *, windows_tls=False):
     with CACHE_LOCK:
         cached = CACHE.get(url)
         if cached and time.monotonic() - cached[0] < 1800:
             return cached[1]
-    request = urllib.request.Request(url, headers={'User-Agent': 'BackloGame/0.1 (personal desktop game library)', 'Accept': 'application/json'})
-    with urllib.request.urlopen(request, timeout=25) as response:
-        result = json.load(response)
+    def python_json():
+        request = urllib.request.Request(url, headers={'User-Agent': 'BackloGame/0.1 (personal desktop game library)', 'Accept': 'application/json'})
+        with urllib.request.urlopen(request, timeout=25) as response:
+            return json.load(response)
+    if windows_tls and os.name=='nt':
+        from igdb import windows_json
+        try:result=windows_json(url)
+        except FileNotFoundError:result=python_json()
+    else:result=python_json()
     with CACHE_LOCK:
         if len(CACHE) > 300:
             CACHE.clear()
@@ -364,11 +370,14 @@ def details(source_id):
         release = data.get('release_date', {})
         game.update(title=data['name'], description=clean(data.get('about_the_game') or data.get('detailed_description') or data.get('short_description'))[:14000], image=data.get('header_image', ''), genre=', '.join(x['description'] for x in data.get('genres', [])), available_platforms=', '.join(k for k, v in data.get('platforms', {}).items() if v), release_label=release.get('date', ''), release_date='', developer=', '.join(data.get('developers', [])), source_url=f'https://store.steampowered.com/app/{appid}/')
         # Request an English date for a stable parse; release year alone stays useful.
-        en = remote(api_url('https://store.steampowered.com/api/appdetails/', appids=appid, l='english', cc='us')).get(appid, {}).get('data', {})
+        try:
+            en = remote(api_url('https://store.steampowered.com/api/appdetails/', appids=appid, l='english', cc='us')).get(appid, {}).get('data', {})
+        except (OSError, ValueError):
+            en = {}
         game['original_title'] = en.get('name', data['name'])
         game['description_url'] = game['source_url']
         game['description_language'] = 'ru' if is_russian(game['description']) else 'original'
-        raw = en.get('release_date', {}).get('date', '')
+        raw = en.get('release_date', {}).get('date', '') or game['release_label']
         for fmt in ('%d %b, %Y', '%b %d, %Y', '%d %B, %Y', '%B %d, %Y'):
             try:
                 game['release_date'] = datetime.strptime(raw, fmt).date().isoformat()

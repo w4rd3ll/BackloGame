@@ -1,6 +1,7 @@
 'use strict';
 let uiLanguage='en';
 const translations={
+  "Не удалось подключиться к IGDB": "Could not connect to IGDB",
   "Загрузить свою обложку": "Upload your own cover",
   "Файл обложки": "Cover file",
   "Обложка больше {size} МБ": "Cover is larger than {size} MB",

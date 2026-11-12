@@ -15,6 +15,37 @@ class IGDBTests(unittest.TestCase):
         with patch.object(server,'remote') as remote,self.assertRaises(ValueError):server.details('igdb:1;fields=*')
         remote.assert_not_called()
 
+    @unittest.skipUnless(server.os.name=='nt','Windows system HTTPS client')
+    def test_windows_relay_uses_system_tls_and_keeps_cache(self):
+        from subprocess import CompletedProcess
+        url=igdb.RELAY+'/game?id=99999'
+        with patch.object(server,'CACHE',{}),patch.object(igdb.subprocess,'run',return_value=CompletedProcess([],0,b'{"game":{"title":"Portal"}}',b'')) as run:
+            self.assertEqual(server.remote(url,windows_tls=True)['game']['title'],'Portal')
+            self.assertEqual(server.remote(url,windows_tls=True)['game']['title'],'Portal')
+        run.assert_called_once()
+        args=run.call_args.args[0]
+        self.assertTrue(Path(args[0]).is_absolute())
+        self.assertEqual(args[1],'--disable')
+        self.assertNotIn('--insecure',args)
+        self.assertEqual(args[-1],url)
+
+    def test_windows_relay_rejects_other_urls_and_reports_connection_error(self):
+        from subprocess import CompletedProcess
+        with patch.object(igdb.subprocess,'run',return_value=CompletedProcess([],28,b'',b'')) as run:
+            with self.assertRaisesRegex(ValueError,'Invalid IGDB relay URL'):
+                igdb.windows_json('https://example.com')
+            run.assert_not_called()
+            with self.assertRaisesRegex(ValueError,'Не удалось подключиться к IGDB'):
+                igdb.windows_json(igdb.RELAY+'/game?id=71')
+
+    def test_steam_metadata_survives_optional_english_lookup_timeout(self):
+        fixture={'400':{'success':True,'data':{'name':'Portal','short_description':'A portal puzzle.','release_date':{'date':'2007'}}}}
+        with patch.object(server,'remote',side_effect=[fixture,TimeoutError('English lookup timed out')]):
+            game=server.details('steam:400')
+        self.assertEqual(game['description'],'A portal puzzle.')
+        self.assertEqual(game['release_date'],'2007')
+        self.assertEqual(game['original_title'],'Portal')
+
     def test_selected_igdb_fields_preserve_progress_notes_and_source(self):
         with tempfile.TemporaryDirectory() as folder,patch.object(server,'DATA',Path(folder)),patch.object(server,'DB',Path(folder)/'library.sqlite3'):
             server.init_db()
